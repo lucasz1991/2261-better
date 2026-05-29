@@ -93,6 +93,22 @@ return [
             // 'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'false'),
         ],
 
+        'mysql_analytics' => [
+            'driver' => 'mysql',
+            'host' => env('ANALYTICS_DB_HOST', env('DB_HOST', '127.0.0.1')),
+            'port' => env('ANALYTICS_DB_PORT', env('DB_PORT', '3306')),
+            'database' => env('ANALYTICS_DB_DATABASE', 'regulierungs-check'),
+            'username' => env('ANALYTICS_DB_USERNAME', env('DB_USERNAME', 'root')),
+            'password' => env('ANALYTICS_DB_PASSWORD', env('DB_PASSWORD', '')),
+            'unix_socket' => env('ANALYTICS_DB_SOCKET', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+        ],
+
     ],
 
     /*

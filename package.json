@@ -3,7 +3,8 @@
     "type": "module",
     "scripts": {
         "dev": "vite",
-        "build": "vite build"
+        "build": "vite build",
+        "capture:homepage": "node resources/node/scraper/capture-regulierungs-check-homepage.cjs"
     },
     "devDependencies": {
         "autoprefixer": "^10.4.7",
@@ -22,6 +23,7 @@
         "@alpinejs/resize": "^3.15.8",
         "@alpinejs/sort": "^3.15.8",
         "alpinejs": "^3.14.3",
+        "puppeteer": "^24.15.0",
         "swiper": "^12.1.2"
     }
 }

@@ -35,16 +35,28 @@
             </x-menu.sidebar-nav>
         @endcanany
 
-        @can('ratings.view')
+        @canany(['ratings.view', 'form_tests.run'])
             <x-menu.sidebar-nav label="Management">
-                <x-menu.sidebar-nav-link
-                    :href="route('admin.reviews')"
-                    icon="star"
-                    :active="request()->routeIs('admin.reviews')"
-                >
-                    Bewertungen
-                </x-menu.sidebar-nav-link>
+                @can('ratings.view')
+                    <x-menu.sidebar-nav-link
+                        :href="route('admin.reviews')"
+                        icon="star"
+                        :active="request()->routeIs('admin.reviews')"
+                    >
+                        Bewertungen
+                    </x-menu.sidebar-nav-link>
+                @endcan
+
+                @can('form_tests.run')
+                    <x-menu.sidebar-nav-link
+                        :href="route('admin.form-script-tests')"
+                        icon="terminal"
+                        :active="request()->routeIs('admin.form-script-tests')"
+                    >
+                        Formular Tests
+                    </x-menu.sidebar-nav-link>
+                @endcan
             </x-menu.sidebar-nav>
-        @endcan
+        @endcanany
     </ul>
 </div>

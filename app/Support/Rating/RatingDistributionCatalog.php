@@ -203,4 +203,12 @@ class RatingDistributionCatalog
 
         return $weights;
     }
+
+    /**
+     * @return array<int, float>
+     */
+    public static function defaultHourWeights(): array
+    {
+        return array_fill(0, 24, 1.0);
+    }
 }
