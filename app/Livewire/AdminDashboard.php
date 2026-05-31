@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Models\ClaimRating;
+use App\Models\Setting;
 use App\Models\SyntheticRatingUser;
 use App\Services\BaseClaimRatingPublisher;
 use Illuminate\Support\Facades\Schema;
@@ -15,6 +16,28 @@ class AdminDashboard extends Component
     public int $linkedBaseUsers = 0;
     public int $publicRatings = 0;
     public int $pendingRatings = 0;
+    public int $plannedRatings = 0;
+    public int $dueRatings = 0;
+    public int $preparedRatings = 0;
+    public int $executedRatings = 0;
+    public int $failedRatings = 0;
+    public int $processingRatings = 0;
+    public int $upcomingRatings = 0;
+    public ?float $averageScore = null;
+    public ?string $nextScheduledFor = null;
+    public string $syntheticUserNameMode = 'realistic';
+
+    /** @var array<int, array<string, mixed>> */
+    public array $recentRatings = [];
+
+    /** @var array<int, array<string, mixed>> */
+    public array $upcomingList = [];
+
+    /** @var array<int, array<string, mixed>> */
+    public array $statusCards = [];
+
+    /** @var array<int, array<string, mixed>> */
+    public array $configChecks = [];
 
     public function mount(): void
     {
@@ -66,6 +89,203 @@ class AdminDashboard extends Component
             : 0;
         $this->publicRatings = ClaimRating::where('is_public', true)->count();
         $this->pendingRatings = ClaimRating::where('status', ClaimRating::STATUS_PENDING)->count();
+        $this->plannedRatings = ClaimRating::planned()->whereNull('executed_at')->count();
+        $this->dueRatings = ClaimRating::query()
+            ->whereNull('executed_at')
+            ->whereNotNull('scheduled_for')
+            ->where('scheduled_for', '<=', now())
+            ->whereNotIn('status', [ClaimRating::STATUS_FAILED, ClaimRating::STATUS_PROCESSING])
+            ->count();
+        $this->preparedRatings = ClaimRating::query()
+            ->whereNull('executed_at')
+            ->whereNotNull('answers')
+            ->count();
+        $this->executedRatings = ClaimRating::whereNotNull('executed_at')->count();
+        $this->failedRatings = ClaimRating::query()
+            ->where(function ($query): void {
+                $query
+                    ->where('status', ClaimRating::STATUS_FAILED)
+                    ->orWhereNotNull('last_execution_error');
+            })
+            ->count();
+        $this->processingRatings = ClaimRating::where('status', ClaimRating::STATUS_PROCESSING)->count();
+        $this->upcomingRatings = ClaimRating::query()
+            ->whereNull('executed_at')
+            ->whereNotNull('scheduled_for')
+            ->where('scheduled_for', '>', now())
+            ->whereNotIn('status', [ClaimRating::STATUS_FAILED, ClaimRating::STATUS_PROCESSING])
+            ->count();
+
+        $averageScore = ClaimRating::whereNotNull('rating_score')->avg('rating_score');
+        $this->averageScore = $averageScore !== null ? round((float) $averageScore, 2) : null;
+
+        $nextRating = ClaimRating::query()
+            ->whereNull('executed_at')
+            ->whereNotNull('scheduled_for')
+            ->where('scheduled_for', '>', now())
+            ->whereNotIn('status', [ClaimRating::STATUS_FAILED, ClaimRating::STATUS_PROCESSING])
+            ->orderBy('scheduled_for')
+            ->first();
+        $this->nextScheduledFor = $nextRating?->scheduled_for?->format('d.m.Y H:i');
+
+        $this->recentRatings = $this->recentRatings();
+        $this->upcomingList = $this->upcomingRatings();
+        $this->statusCards = $this->statusCards();
+        $this->configChecks = $this->configChecks();
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function recentRatings(): array
+    {
+        return ClaimRating::query()
+            ->with('syntheticUser')
+            ->orderByDesc('updated_at')
+            ->limit(6)
+            ->get()
+            ->map(fn (ClaimRating $rating): array => $this->ratingRow($rating))
+            ->all();
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function upcomingRatings(): array
+    {
+        return ClaimRating::query()
+            ->with('syntheticUser')
+            ->whereNull('executed_at')
+            ->whereNotNull('scheduled_for')
+            ->where('scheduled_for', '>', now())
+            ->whereNotIn('status', [ClaimRating::STATUS_FAILED, ClaimRating::STATUS_PROCESSING])
+            ->orderBy('scheduled_for')
+            ->limit(5)
+            ->get()
+            ->map(fn (ClaimRating $rating): array => $this->ratingRow($rating))
+            ->all();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function ratingRow(ClaimRating $rating): array
+    {
+        $baseContext = data_get($rating->data, 'base_context', []);
+        $syntheticUser = $rating->syntheticUser;
+
+        return [
+            'id' => $rating->id,
+            'status' => $rating->status,
+            'status_label' => $rating->status_label,
+            'execution_state' => $rating->execution_state_label,
+            'score' => $rating->rating_score !== null ? number_format((float) $rating->rating_score, 2, ',', '.') : null,
+            'scheduled_for' => $rating->scheduled_for?->format('d.m.Y H:i'),
+            'executed_at' => $rating->executed_at?->format('d.m.Y H:i'),
+            'updated_at' => $rating->updated_at?->format('d.m.Y H:i'),
+            'base_claim_rating_id' => $rating->base_claim_rating_id,
+            'base_user_id' => $rating->base_user_id ?: $syntheticUser?->base_user_id,
+            'user_name' => $syntheticUser?->name,
+            'user_email' => $syntheticUser?->email,
+            'insurance_name' => data_get($baseContext, 'insurance.name'),
+            'type_name' => data_get($baseContext, 'insurance_type.name'),
+            'subtype_name' => data_get($baseContext, 'insurance_subtype.name'),
+            'has_error' => filled($rating->last_execution_error),
+            'error' => $rating->last_execution_error,
+        ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function statusCards(): array
+    {
+        return [
+            [
+                'label' => 'Geplant',
+                'value' => $this->plannedRatings,
+                'detail' => $this->nextScheduledFor ? 'Naechster Lauf '.$this->nextScheduledFor : 'Kein Lauf geplant',
+                'icon' => 'fa-calendar-alt',
+                'tone' => 'blue',
+            ],
+            [
+                'label' => 'AI vorbereitet',
+                'value' => $this->preparedRatings,
+                'detail' => 'Mit Antworten, noch nicht ausgefuehrt',
+                'icon' => 'fa-magic',
+                'tone' => 'violet',
+            ],
+            [
+                'label' => 'Faellig',
+                'value' => $this->dueRatings,
+                'detail' => 'Kann jetzt ausgefuehrt werden',
+                'icon' => 'fa-bolt',
+                'tone' => $this->dueRatings > 0 ? 'amber' : 'slate',
+            ],
+            [
+                'label' => 'Ausgefuehrt',
+                'value' => $this->executedRatings,
+                'detail' => $this->linkedBaseRatings.' mit Base-ID',
+                'icon' => 'fa-check-circle',
+                'tone' => 'emerald',
+            ],
+            [
+                'label' => 'Fehler',
+                'value' => $this->failedRatings,
+                'detail' => $this->processingRatings.' laufen aktuell',
+                'icon' => 'fa-exclamation-triangle',
+                'tone' => $this->failedRatings > 0 ? 'rose' : 'slate',
+            ],
+        ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function configChecks(): array
+    {
+        $openRouter = Setting::getValue('openrouter', 'config') ?? [];
+        $openRouter = is_array($openRouter) ? $openRouter : [];
+        $database = Setting::getValue('database', 'config') ?? [];
+        $database = is_array($database) ? $database : [];
+        $ratingSettings = Setting::getValue('rating_generation', 'settings') ?? [];
+        $ratingSettings = is_array($ratingSettings) ? $ratingSettings : [];
+        $analysis = Setting::getValue('rating_generation', 'analysis') ?? [];
+        $analysis = is_array($analysis) ? $analysis : [];
+        $this->syntheticUserNameMode = (string) ($ratingSettings['synthetic_user_name_mode'] ?? 'realistic');
+
+        return [
+            [
+                'label' => 'OpenRouter',
+                'value' => filled($openRouter['api_key'] ?? null) ? 'Bereit' : 'API-Key fehlt',
+                'ok' => filled($openRouter['api_key'] ?? null),
+                'detail' => (string) ($openRouter['model'] ?? 'kein Modell'),
+            ],
+            [
+                'label' => 'RegCheck DB',
+                'value' => filled($database['database'] ?? null) ? 'Konfiguriert' : 'Nicht gesetzt',
+                'ok' => filled($database['database'] ?? null),
+                'detail' => (string) ($database['database'] ?? 'keine Datenbank'),
+            ],
+            [
+                'label' => 'Analyse',
+                'value' => filled($analysis['analyzed_at'] ?? null) ? 'Vorhanden' : 'Ausstehend',
+                'ok' => filled($analysis['analyzed_at'] ?? null),
+                'detail' => filled($analysis['analyzed_at'] ?? null)
+                    ? \Carbon\Carbon::parse((string) $analysis['analyzed_at'])->format('d.m.Y H:i')
+                    : 'Noch nicht berechnet',
+            ],
+            [
+                'label' => 'Namensmodus',
+                'value' => match ($this->syntheticUserNameMode) {
+                    'simple' => 'Simple Fakenamen',
+                    'anonymous' => 'Anonym',
+                    default => 'Realistische Namen',
+                },
+                'ok' => true,
+                'detail' => 'Gilt fuer neue Demo-Benutzer',
+            ],
+        ];
     }
 
     public function render()
