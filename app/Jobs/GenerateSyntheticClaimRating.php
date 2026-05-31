@@ -62,7 +62,8 @@ class GenerateSyntheticClaimRating implements ShouldQueue
                 throw new \RuntimeException('Missing base context for synthetic rating generation.');
             }
 
-            SyntheticRatingUser::ensureForClaimRating($this->claimRating);
+            $basePublisher->resetSyntheticUserForNewAiRun($this->claimRating);
+            SyntheticRatingUser::createForClaimRating($this->claimRating);
             $this->claimRating->refresh();
 
             $payload = $aiConnection->generateSyntheticClaimRatingPayload([

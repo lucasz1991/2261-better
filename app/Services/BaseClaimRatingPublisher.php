@@ -12,6 +12,32 @@ use Illuminate\Support\Str;
 
 class BaseClaimRatingPublisher
 {
+    public function resetSyntheticUserForNewAiRun(ClaimRating $rating): void
+    {
+        $rating->refresh();
+
+        $syntheticUser = $rating->syntheticUser;
+        $baseUserId = (int) ($rating->base_user_id ?: ($syntheticUser?->base_user_id ?? 0));
+
+        if ($baseUserId > 0) {
+            $connection = RegCheckDatabase::connectionName();
+
+            DB::connection($connection)->transaction(function () use ($connection, $baseUserId): void {
+                $this->deleteSyntheticBaseUserIfUnused($connection, $baseUserId);
+            });
+        }
+
+        if ($syntheticUser) {
+            $syntheticUser->markBaseUserRetracted();
+            $syntheticUser->delete();
+        }
+
+        $rating->forceFill([
+            'synthetic_rating_user_id' => null,
+            'base_user_id' => null,
+        ])->saveQuietly();
+    }
+
     public function publish(ClaimRating $rating): int
     {
         $rating->refresh();
@@ -327,6 +353,9 @@ class BaseClaimRatingPublisher
 
         $payload = [
             'name' => $syntheticUser->name,
+            'first_name' => $syntheticUser->first_name,
+            'last_name' => $syntheticUser->last_name,
+            'username' => $syntheticUser->username ?: $syntheticUser->name,
             'email' => $syntheticUser->email,
             'email_verified_at' => $syntheticUser->email_verified_at ?? $now,
             'password' => Hash::make(Str::random(40)),

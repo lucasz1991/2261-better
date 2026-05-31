@@ -16,6 +16,9 @@ class SyntheticRatingUser extends Model
     protected $fillable = [
         'base_user_id',
         'name',
+        'first_name',
+        'last_name',
+        'username',
         'email',
         'email_domain',
         'role',
@@ -42,12 +45,16 @@ class SyntheticRatingUser extends Model
         $nameMode = self::syntheticUserNameMode();
         $privacySettings = self::privacySettingsForNameMode(self::privacySettingsFromAnalysis(), $nameMode);
         $persona = self::syntheticPersona($privacySettings, $nameMode);
+        $username = self::usernameFromPersona($persona, $token);
         $emailDomain = self::emailDomainFromAnalysis();
         $email = self::syntheticEmail($persona, $token, $emailDomain);
 
-        return self::create([
+        $syntheticUser = self::create([
             'base_user_id' => null,
-            'name' => $persona['display_name'],
+            'name' => $username,
+            'first_name' => $persona['first_name'] ?? null,
+            'last_name' => $persona['last_name'] ?? null,
+            'username' => $username,
             'email' => $email,
             'email_domain' => $emailDomain,
             'role' => 'guest',
@@ -73,6 +80,15 @@ class SyntheticRatingUser extends Model
                 ],
             ],
         ]);
+
+        if ($claimRating) {
+            $claimRating->forceFill([
+                'synthetic_rating_user_id' => $syntheticUser->id,
+                'base_user_id' => null,
+            ])->saveQuietly();
+        }
+
+        return $syntheticUser;
     }
 
     public static function ensureForClaimRating(ClaimRating $claimRating): self
@@ -94,15 +110,16 @@ class SyntheticRatingUser extends Model
         $email = (string) ($profile['email'] ?? '');
 
         if (self::isSynthetic2261Email($email)) {
-            $nameMode = self::normalizeNameMode(data_get($profile, 'name_mode', data_get($profile, 'persona.name_mode', self::syntheticUserNameMode())));
+            $nameMode = self::syntheticUserNameMode();
             $privacySettings = data_get($profile, 'privacy_settings', self::privacySettingsFromAnalysis());
             $privacySettings = is_array($privacySettings) ? $privacySettings : self::privacySettingsFromAnalysis();
             $privacySettings = self::privacySettingsForNameMode($privacySettings, $nameMode);
             $persona = data_get($profile, 'persona');
-            $persona = is_array($persona) && self::normalizeNameMode($persona['name_mode'] ?? $nameMode) === $nameMode
+            $persona = is_array($persona)
                 ? $persona
                 : self::syntheticPersona($privacySettings, $nameMode);
             $profileName = (string) ($persona['display_name'] ?? $profile['name'] ?? 'Anonyme Testperson');
+            $username = self::usernameFromPersona($persona, (string) Str::random(12));
 
             if (str_starts_with($profileName, 'Interner Testnutzer 2261')) {
                 $profileName = $persona['display_name'];
@@ -112,7 +129,10 @@ class SyntheticRatingUser extends Model
                 ['email' => $email],
                 [
                     'base_user_id' => $claimRating->base_user_id,
-                    'name' => $profileName,
+                    'name' => (string) ($profile['username'] ?? $username),
+                    'first_name' => $persona['first_name'] ?? null,
+                    'last_name' => $persona['last_name'] ?? null,
+                    'username' => (string) ($profile['username'] ?? $username),
                     'email_domain' => self::domainFromEmail($email) ?? 'example.invalid',
                     'role' => (string) ($profile['role'] ?? 'guest'),
                     'status' => (bool) ($profile['status'] ?? true),
@@ -158,6 +178,10 @@ class SyntheticRatingUser extends Model
             'id' => $this->id,
             'base_user_id' => $this->base_user_id,
             'name' => $this->name,
+            'first_name' => $this->first_name,
+            'last_name' => $this->last_name,
+            'username' => $this->username,
+            'display_name' => trim(($this->first_name ?? '').' '.($this->last_name ?? '')) ?: $this->name,
             'email' => $this->email,
             'email_domain' => $this->email_domain,
             'role' => $this->role,
@@ -295,15 +319,6 @@ class SyntheticRatingUser extends Model
     {
         $privacySettings = array_replace_recursive(self::defaultPrivacySettings(), $privacySettings);
 
-        if ($nameMode === 'anonymous') {
-            $privacySettings['comments']['name_visibility'] = 'none';
-            $privacySettings['comments']['avatar_visibility'] = 'none';
-            $privacySettings['ratings']['name_visibility'] = 'none';
-            $privacySettings['ratings']['avatar_visibility'] = 'none';
-
-            return $privacySettings;
-        }
-
         $privacySettings['comments']['name_visibility'] = 'all';
         $privacySettings['ratings']['name_visibility'] = 'all';
 
@@ -312,19 +327,7 @@ class SyntheticRatingUser extends Model
 
     private static function syntheticUserNameMode(): string
     {
-        $settings = Setting::getValue('rating_generation', 'settings');
-        $settings = is_array($settings) ? $settings : [];
-
-        return self::normalizeNameMode($settings['synthetic_user_name_mode'] ?? 'realistic');
-    }
-
-    private static function normalizeNameMode(mixed $value): string
-    {
-        $value = (string) $value;
-
-        return in_array($value, ['realistic', 'simple', 'anonymous'], true)
-            ? $value
-            : 'realistic';
+        return 'realistic';
     }
 
     private static function emailDomainFromAnalysis(): string
@@ -432,6 +435,32 @@ class SyntheticRatingUser extends Model
         $token = substr(preg_replace('/[^a-z0-9]/', '', strtolower($token)) ?: Str::random(8), 0, 8);
 
         return "synthetic-2261-{$namePart}-{$token}@{$domain}";
+    }
+
+    private static function usernameFromPersona(array $persona, string $token): string
+    {
+        $namePart = (string) ($persona['display_name'] ?? 'testperson');
+
+        if (($persona['first_name'] ?? null) && ($persona['last_name'] ?? null)) {
+            $namePart = $persona['first_name'].'.'.$persona['last_name'];
+        }
+
+        $username = Str::of($namePart)
+            ->ascii()
+            ->lower()
+            ->replaceMatches('/[^a-z0-9]+/', '.')
+            ->trim('.')
+            ->limit(32, '')
+            ->trim('.')
+            ->toString();
+
+        if ($username === '') {
+            $username = 'testperson';
+        }
+
+        $token = substr(preg_replace('/[^a-z0-9]/', '', strtolower($token)) ?: Str::random(8), 0, 4);
+
+        return "{$username}.{$token}";
     }
 
     private static function isSynthetic2261Email(string $email): bool
@@ -571,19 +600,14 @@ class SyntheticRatingUser extends Model
         $region = $regions[array_rand($regions)];
         $ageRange = $ageRanges[array_rand($ageRanges)];
         $ratingsNameVisibility = data_get($privacySettings, 'ratings.name_visibility', 'none');
-        $simpleNameNumber = random_int(1000, 9999);
-        $visibleName = match ($nameMode) {
-            'anonymous' => 'Anonyme Testperson',
-            'simple' => "Testperson {$simpleNameNumber}",
-            default => "{$firstName} {$lastName}",
-        };
+        $visibleName = "{$firstName} {$lastName}";
 
         return [
             'synthetic_marker' => '2261-better-testperson',
-            'name_mode' => $nameMode,
-            'first_name' => $nameMode === 'realistic' ? $firstName : null,
-            'last_name' => $nameMode === 'realistic' ? $lastName : null,
-            'alias' => $nameMode === 'simple' ? $visibleName : null,
+            'name_mode' => 'realistic',
+            'first_name' => $firstName,
+            'last_name' => $lastName,
+            'alias' => null,
             'display_name' => $visibleName,
 
             'age_range' => $ageRange,
@@ -600,7 +624,7 @@ class SyntheticRatingUser extends Model
             'device_context' => $devices[array_rand($devices)],
             'language' => 'de',
             'timezone' => 'Europe/Berlin',
-            'is_named_publicly' => $nameMode !== 'anonymous' && $ratingsNameVisibility !== 'none',
+            'is_named_publicly' => $ratingsNameVisibility !== 'none',
             'note' => 'Fiktives internes Testprofil ohne reale Personendaten.',
         ];
     }

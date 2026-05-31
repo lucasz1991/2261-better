@@ -387,26 +387,17 @@
                     </div>
 
                     <div class="rounded-lg border border-slate-200 bg-white p-4">
-                        <div class="grid gap-4 lg:grid-cols-2 lg:items-end">
+                        <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                             <div>
-                                <label for="synthetic-user-name-mode" class="block text-sm font-medium text-slate-700">Namensmodus fuer Demo-Benutzer</label>
-                                <select
-                                    id="synthetic-user-name-mode"
-                                    wire:model.defer="syntheticUserNameMode"
-                                    class="mt-2 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                                >
-                                    <option value="realistic">Realistische Testnamen</option>
-                                    <option value="simple">Simple Fakenamen</option>
-                                    <option value="anonymous">Alle anonym</option>
-                                </select>
+                                <h3 class="text-sm font-semibold text-slate-900">Demo-Benutzer</h3>
+                                <p class="mt-1 text-sm text-slate-600">Neue Testnutzer werden immer mit realistischen Vor- und Nachnamen erzeugt.</p>
                                 <p class="mt-2 text-xs text-slate-500">
-                                    Der Modus gilt fuer neu geplante Demo-Benutzer. E-Mail-Domains werden aus der Analyse gezogen, <span class="font-mono">regulierungs-check.de</span> wird ausgeschlossen.
+                                    E-Mail-Domains werden aus der Analyse gezogen, <span class="font-mono">regulierungs-check.de</span> wird ausgeschlossen.
                                 </p>
                             </div>
-
-                            <button type="button" wire:click="saveRatingSettings" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500">
-                                Namensmodus speichern
-                            </button>
+                            <span class="inline-flex w-fit items-center rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+                                Realistische Namen aktiv
+                            </span>
                         </div>
                     </div>
 

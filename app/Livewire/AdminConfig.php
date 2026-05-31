@@ -66,7 +66,7 @@ class AdminConfig extends Component
         $this->subtypeWeights = $this->mergeSubtypeWeights($ratingSettings['subtype_weights'] ?? []);
         $this->hourWeights = $this->mergeHourWeights($ratingSettings['hour_weights'] ?? []);
         $this->scoreWeights = $this->mergeScoreWeights($ratingSettings['score_weights'] ?? []);
-        $this->syntheticUserNameMode = $this->normalizeSyntheticUserNameMode($ratingSettings['synthetic_user_name_mode'] ?? 'realistic');
+        $this->syntheticUserNameMode = 'realistic';
 
         $openrouterSettings = Setting::getValue('openrouter', 'config') ?? [];
         $openrouterSettings = is_array($openrouterSettings) ? $openrouterSettings : [];
@@ -317,7 +317,6 @@ class AdminConfig extends Component
             'subtypeWeights.*.*' => ['nullable', 'numeric', 'min:0', 'max:10000'],
             'hourWeights.*' => ['nullable', 'numeric', 'min:0', 'max:10000'],
             'scoreWeights.*' => ['nullable', 'numeric', 'min:0', 'max:10000'],
-            'syntheticUserNameMode' => ['required', 'in:realistic,simple,anonymous'],
             'openrouterApiUrl' => ['required', 'url'],
             'openrouterApiKey' => ['nullable', 'string'],
             'openrouterModel' => ['required', 'string', 'min:1'],
@@ -346,7 +345,6 @@ class AdminConfig extends Component
             'subtypeWeights.*.*' => ['nullable', 'numeric', 'min:0', 'max:10000'],
             'hourWeights.*' => ['nullable', 'numeric', 'min:0', 'max:10000'],
             'scoreWeights.*' => ['nullable', 'numeric', 'min:0', 'max:10000'],
-            'syntheticUserNameMode' => ['required', 'in:realistic,simple,anonymous'],
         ]);
     }
 
@@ -393,7 +391,7 @@ class AdminConfig extends Component
             'subtype_weights' => $this->nestedNumericWeights($this->subtypeWeights),
             'hour_weights' => $this->numericWeights($this->hourWeights),
             'score_weights' => $this->scoreNumericWeights($this->scoreWeights),
-            'synthetic_user_name_mode' => $this->normalizeSyntheticUserNameMode($this->syntheticUserNameMode),
+            'synthetic_user_name_mode' => 'realistic',
         ]);
     }
 
@@ -595,10 +593,6 @@ class AdminConfig extends Component
 
     private function normalizeSyntheticUserNameMode(mixed $value): string
     {
-        $value = (string) $value;
-
-        return in_array($value, ['realistic', 'simple', 'anonymous'], true)
-            ? $value
-            : 'realistic';
+        return 'realistic';
     }
 }

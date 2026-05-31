@@ -252,7 +252,7 @@ class AdminDashboard extends Component
         $ratingSettings = is_array($ratingSettings) ? $ratingSettings : [];
         $analysis = Setting::getValue('rating_generation', 'analysis') ?? [];
         $analysis = is_array($analysis) ? $analysis : [];
-        $this->syntheticUserNameMode = (string) ($ratingSettings['synthetic_user_name_mode'] ?? 'realistic');
+        $this->syntheticUserNameMode = 'realistic';
 
         return [
             [
@@ -277,11 +277,7 @@ class AdminDashboard extends Component
             ],
             [
                 'label' => 'Namensmodus',
-                'value' => match ($this->syntheticUserNameMode) {
-                    'simple' => 'Simple Fakenamen',
-                    'anonymous' => 'Anonym',
-                    default => 'Realistische Namen',
-                },
+                'value' => 'Realistische Namen',
                 'ok' => true,
                 'detail' => 'Gilt fuer neue Demo-Benutzer',
             ],
