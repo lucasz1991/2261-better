@@ -77,7 +77,7 @@ class AdminDashboard extends Component
         }
     }
 
-    private function loadStats(): void
+    public function loadStats(): void
     {
         if (! Schema::hasTable('claim_ratings')) {
             return;
