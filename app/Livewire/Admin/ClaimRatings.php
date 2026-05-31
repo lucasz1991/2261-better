@@ -2,7 +2,9 @@
 
 namespace App\Livewire\Admin;
 
+use App\Livewire\Admin\Concerns\ShowsClaimRatingModal;
 use App\Models\ClaimRating;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -10,10 +12,11 @@ use Livewire\WithPagination;
 class ClaimRatings extends Component
 {
     use WithPagination;
+    use ShowsClaimRatingModal;
 
     public string $search = '';
     public string $status = '';
-    public string $sortField = 'created_at';
+    public string $sortField = 'executed_at';
     public string $sortDirection = 'desc';
 
     protected array $queryString = [
@@ -38,7 +41,7 @@ class ClaimRatings extends Component
 
     public function sortBy(string $field): void
     {
-        if (! in_array($field, ['id', 'base_claim_rating_id', 'rating_score', 'status', 'is_public', 'created_at'], true)) {
+        if (! in_array($field, ['id', 'base_claim_rating_id', 'rating_score', 'status', 'is_public', 'created_at', 'executed_at'], true)) {
             return;
         }
 
@@ -59,6 +62,7 @@ class ClaimRatings extends Component
     public function render()
     {
         $ratings = ClaimRating::query()
+            ->whereNotNull('executed_at')
             ->search($this->search)
             ->when($this->status !== '', fn ($query) => $query->where('status', $this->status))
             ->orderBy($this->sortField, $this->sortDirection)
@@ -67,6 +71,12 @@ class ClaimRatings extends Component
         return view('livewire.admin.claim-ratings', [
             'ratings' => $ratings,
             'statusOptions' => ClaimRating::statusOptions(),
+            'selectedRating' => $this->selectedRating(),
         ])->layout('layouts.master');
+    }
+
+    protected function ratingDetailQuery(): Builder
+    {
+        return ClaimRating::query()->whereNotNull('executed_at');
     }
 }

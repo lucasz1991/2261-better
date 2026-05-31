@@ -13,7 +13,13 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        //
+        $schedule->command('ratings:plan-synthetic')
+            ->dailyAt('00:05')
+            ->withoutOverlapping();
+
+        $schedule->command('ratings:run-due-synthetic')
+            ->everyMinute()
+            ->withoutOverlapping();
     }
 
     /**

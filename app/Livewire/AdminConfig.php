@@ -23,6 +23,9 @@ class AdminConfig extends Component
     /** @var array<int|string, float|int|string|null> */
     public array $hourWeights = [];
 
+    /** @var array<string, float|int|string|null> */
+    public array $scoreWeights = [];
+
     public string $openrouterApiUrl = 'https://openrouter.ai/api/v1/chat/completions';
     public string $openrouterApiKey = '';
     public string $openrouterModel = 'openrouter/auto';
@@ -60,6 +63,7 @@ class AdminConfig extends Component
         $this->typeWeights = $this->mergeTypeWeights($ratingSettings['type_weights'] ?? []);
         $this->subtypeWeights = $this->mergeSubtypeWeights($ratingSettings['subtype_weights'] ?? []);
         $this->hourWeights = $this->mergeHourWeights($ratingSettings['hour_weights'] ?? []);
+        $this->scoreWeights = $this->mergeScoreWeights($ratingSettings['score_weights'] ?? []);
 
         $openrouterSettings = Setting::getValue('openrouter', 'config') ?? [];
         $openrouterSettings = is_array($openrouterSettings) ? $openrouterSettings : [];
@@ -196,6 +200,7 @@ class AdminConfig extends Component
         $this->typeWeights = RatingDistributionCatalog::defaultTypeWeights();
         $this->subtypeWeights = RatingDistributionCatalog::defaultSubtypeWeights();
         $this->hourWeights = RatingDistributionCatalog::defaultHourWeights();
+        $this->scoreWeights = RatingDistributionCatalog::defaultScoreWeights();
     }
 
     public function getTypeWeightTotalProperty(): float
@@ -217,6 +222,11 @@ class AdminConfig extends Component
     public function getHourWeightTotalProperty(): float
     {
         return array_sum($this->numericWeights($this->hourWeights));
+    }
+
+    public function getScoreWeightTotalProperty(): float
+    {
+        return array_sum($this->scoreNumericWeights($this->scoreWeights));
     }
 
     public function getPeakHoursProperty(): string
@@ -244,10 +254,47 @@ class AdminConfig extends Component
         return sprintf('%d Bewertungen analysiert am %s', $this->lastAnalysis['total_ratings'] ?? 0, $date);
     }
 
+    /**
+     * Prepare score buckets with all calculated values for the view
+     */
+    public function getFormattedScoreBucketsProperty(): array
+    {
+        $scoreStats = is_array($this->lastAnalysis['score_stats']['buckets'] ?? null) 
+            ? $this->lastAnalysis['score_stats']['buckets'] 
+            : [];
+
+        $formatted = [];
+        foreach (RatingDistributionCatalog::scoreBuckets() as $scoreKey => $bucketDef) {
+            $stats = $scoreStats[$scoreKey] ?? [];
+            $percent = (float) ($stats['percent'] ?? 0);
+            
+            $tone = match ($scoreKey) {
+                'very_bad', 'bad' => 'border-rose-200 bg-rose-50 text-rose-800',
+                'average' => 'border-amber-200 bg-amber-50 text-amber-800',
+                default => 'border-emerald-200 bg-emerald-50 text-emerald-800',
+            };
+
+            $formatted[$scoreKey] = [
+                'key' => $scoreKey,
+                'label' => $bucketDef['label'] ?? 'Unbekannt',
+                'min' => $bucketDef['min'] ?? 0,
+                'max' => $bucketDef['max'] ?? 0,
+                'count' => (int) ($stats['count'] ?? 0),
+                'percent' => $percent,
+                'tone' => $tone,
+                'weight' => $this->scoreWeights[$scoreKey] ?? $bucketDef['default_weight'],
+            ];
+        }
+
+        return $formatted;
+    }
+
     public function render()
     {
         return view('livewire.admin-config', [
             'catalog' => RatingDistributionCatalog::types(),
+            'scoreBuckets' => RatingDistributionCatalog::scoreBuckets(),
+            'formattedScoreBuckets' => $this->formattedScoreBuckets,
         ])->layout('layouts.master');
     }
 
@@ -258,6 +305,7 @@ class AdminConfig extends Component
             'typeWeights.*' => ['nullable', 'numeric', 'min:0', 'max:10000'],
             'subtypeWeights.*.*' => ['nullable', 'numeric', 'min:0', 'max:10000'],
             'hourWeights.*' => ['nullable', 'numeric', 'min:0', 'max:10000'],
+            'scoreWeights.*' => ['nullable', 'numeric', 'min:0', 'max:10000'],
             'openrouterApiUrl' => ['required', 'url'],
             'openrouterApiKey' => ['nullable', 'string'],
             'openrouterModel' => ['required', 'string', 'min:1'],
@@ -320,6 +368,7 @@ class AdminConfig extends Component
             'type_weights' => $this->numericWeights($this->typeWeights),
             'subtype_weights' => $this->nestedNumericWeights($this->subtypeWeights),
             'hour_weights' => $this->numericWeights($this->hourWeights),
+            'score_weights' => $this->scoreNumericWeights($this->scoreWeights),
         ]);
     }
 
@@ -445,6 +494,21 @@ class AdminConfig extends Component
     }
 
     /**
+     * @param array<string, mixed> $storedWeights
+     * @return array<string, float>
+     */
+    private function mergeScoreWeights(array $storedWeights): array
+    {
+        $weights = RatingDistributionCatalog::defaultScoreWeights();
+
+        foreach ($weights as $key => $default) {
+            $weights[$key] = $this->toWeight($storedWeights[$key] ?? $default);
+        }
+
+        return $weights;
+    }
+
+    /**
      * @param array<int|string, mixed> $weights
      * @return array<int, float>
      */
@@ -475,6 +539,21 @@ class AdminConfig extends Component
             foreach ($subtypes as $subtypeId => $weight) {
                 $numeric[(int) $typeId][(int) $subtypeId] = $this->toWeight($weight);
             }
+        }
+
+        return $numeric;
+    }
+
+    /**
+     * @param array<string, mixed> $weights
+     * @return array<string, float>
+     */
+    private function scoreNumericWeights(array $weights): array
+    {
+        $numeric = [];
+
+        foreach (RatingDistributionCatalog::scoreBuckets() as $key => $bucket) {
+            $numeric[$key] = $this->toWeight($weights[$key] ?? $bucket['default_weight']);
         }
 
         return $numeric;

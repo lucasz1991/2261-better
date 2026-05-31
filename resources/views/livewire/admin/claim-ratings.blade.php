@@ -2,7 +2,7 @@
     <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
             <h1 class="text-2xl font-semibold text-slate-900">Bewertungen</h1>
-            <p class="mt-1 text-sm text-slate-600">Internes Register fuer importierte oder geplante Bewertungsdaten.</p>
+            <p class="mt-1 text-sm text-slate-600">Ausgefuehrte interne Bewertungsdaten nach AI-Generierung und AI-Auswertung.</p>
         </div>
 
         <button
@@ -63,13 +63,22 @@
                             <button type="button" wire:click="sortBy('is_public')" class="font-semibold">Sichtbar</button>
                         </th>
                         <th class="px-4 py-3">
-                            <button type="button" wire:click="sortBy('created_at')" class="font-semibold">Angelegt</button>
+                            <button type="button" wire:click="sortBy('executed_at')" class="font-semibold">Ausgefuehrt</button>
                         </th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100 bg-white">
                     @forelse($ratings as $rating)
-                        <tr wire:key="claim-rating-{{ $rating->id }}" class="hover:bg-slate-50">
+                        <tr
+                            wire:key="claim-rating-{{ $rating->id }}"
+                            wire:click="openRatingModal({{ $rating->id }})"
+                            x-on:keydown.enter="$wire.openRatingModal({{ $rating->id }})"
+                            x-on:keydown.space.prevent="$wire.openRatingModal({{ $rating->id }})"
+                            tabindex="0"
+                            role="button"
+                            aria-label="Bewertung #{{ $rating->id }} anzeigen"
+                            class="cursor-pointer hover:bg-slate-50 focus:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
+                        >
                             <td class="whitespace-nowrap px-4 py-3 font-medium text-slate-900">#{{ $rating->id }}</td>
                             <td class="whitespace-nowrap px-4 py-3 text-slate-700">
                                 {{ $rating->base_claim_rating_id ? '#' . $rating->base_claim_rating_id : '-' }}
@@ -96,13 +105,13 @@
                                 @endif
                             </td>
                             <td class="whitespace-nowrap px-4 py-3 text-slate-600">
-                                {{ optional($rating->created_at)->format('d.m.Y H:i') ?? '-' }}
+                                {{ optional($rating->executed_at)->format('d.m.Y H:i') ?? '-' }}
                             </td>
                         </tr>
                     @empty
                         <tr>
                             <td colspan="7" class="px-4 py-10 text-center text-sm text-slate-500">
-                                Noch keine Bewertungen gespeichert.
+                                Noch keine ausgefuehrten Bewertungen gespeichert.
                             </td>
                         </tr>
                     @endforelse
@@ -114,4 +123,6 @@
     <div>
         {{ $ratings->links() }}
     </div>
+
+    @include('livewire.admin.partials.claim-rating-detail-modal', ['selectedRating' => $selectedRating])
 </div>

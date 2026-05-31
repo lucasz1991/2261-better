@@ -211,4 +211,53 @@ class RatingDistributionCatalog
     {
         return array_fill(0, 24, 1.0);
     }
+
+    /**
+     * @return array<string, array{label: string, min: float, max: float, default_weight: float}>
+     */
+    public static function scoreBuckets(): array
+    {
+        return [
+            'very_bad' => [
+                'label' => 'Sehr schlecht',
+                'min' => 0.0,
+                'max' => 0.24,
+                'default_weight' => 1.0,
+            ],
+            'bad' => [
+                'label' => 'Schlecht',
+                'min' => 0.25,
+                'max' => 0.44,
+                'default_weight' => 1.0,
+            ],
+            'average' => [
+                'label' => 'Mittel',
+                'min' => 0.45,
+                'max' => 0.64,
+                'default_weight' => 1.0,
+            ],
+            'good' => [
+                'label' => 'Gut',
+                'min' => 0.65,
+                'max' => 0.84,
+                'default_weight' => 1.0,
+            ],
+            'very_good' => [
+                'label' => 'Sehr gut',
+                'min' => 0.85,
+                'max' => 0.99,
+                'default_weight' => 1.0,
+            ],
+        ];
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    public static function defaultScoreWeights(): array
+    {
+        return collect(self::scoreBuckets())
+            ->mapWithKeys(fn (array $bucket, string $key): array => [$key => (float) $bucket['default_weight']])
+            ->all();
+    }
 }

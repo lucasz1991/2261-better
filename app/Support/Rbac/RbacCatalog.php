@@ -30,7 +30,6 @@ class RbacCatalog
             ],
             'Bewertungen' => [
                 ['key' => 'ratings.view', 'label' => 'Bewertungen anzeigen'],
-                ['key' => 'form_tests.run', 'label' => 'Formularscript Tests ausfuehren'],
             ],
         ];
     }

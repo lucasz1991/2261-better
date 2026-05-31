@@ -23,6 +23,8 @@ class RatingDistributionAnalyzer
             $subtypeStats = $this->getSubtypeStatistics();
             $hourStats = $this->getHourlyStatistics();
             $hourWeights = $this->calculateHourWeights($hourStats);
+            $scoreStats = $this->getScoreStatistics();
+            $scoreWeights = $this->calculateScoreWeights($scoreStats['buckets'] ?? []);
             
             if (empty($subtypeStats)) {
                 Log::warning('No published ratings found for analysis');
@@ -31,6 +33,8 @@ class RatingDistributionAnalyzer
                     'subtype_weights' => [],
                     'hour_weights' => $hourWeights,
                     'hour_stats' => $hourStats,
+                    'score_weights' => $scoreWeights,
+                    'score_stats' => $scoreStats,
                     'stats' => [],
                     'timestamp' => now(),
                     'total_ratings_analyzed' => 0,
@@ -48,6 +52,8 @@ class RatingDistributionAnalyzer
                 'subtype_weights' => $subtypeWeights,
                 'hour_weights' => $hourWeights,
                 'hour_stats' => $hourStats,
+                'score_weights' => $scoreWeights,
+                'score_stats' => $scoreStats,
                 'stats' => $subtypeStats,
                 'timestamp' => now(),
                 'total_ratings_analyzed' => array_sum(
@@ -90,6 +96,8 @@ class RatingDistributionAnalyzer
                 'subtype_weights' => $analysis['subtype_weights'],
                 'hour_weights' => $analysis['hour_weights'] ?? [],
                 'hour_stats' => $analysis['hour_stats'] ?? [],
+                'score_weights' => $analysis['score_weights'] ?? [],
+                'score_stats' => $analysis['score_stats'] ?? [],
                 'stats' => $analysis['stats'],
                 'analyzed_at' => $analysis['timestamp']->toIso8601String(),
                 'total_ratings' => $analysis['total_ratings_analyzed'],
@@ -120,6 +128,7 @@ class RatingDistributionAnalyzer
             'type_weights' => $this->mergeTypeWeights($analysis['type_weights'] ?? []),
             'subtype_weights' => $this->mergeSubtypeWeights($analysis['subtype_weights'] ?? []),
             'hour_weights' => $this->mergeHourWeights($analysis['hour_weights'] ?? []),
+            'score_weights' => $this->mergeScoreWeights($analysis['score_weights'] ?? []),
         ]);
     }
 
@@ -305,6 +314,85 @@ class RatingDistributionAnalyzer
     }
 
     /**
+     * Ermittelt, wie gut oder schlecht reale Bewertungen am Ende bewertet wurden.
+     *
+     * @return array<string, mixed>
+     */
+    private function getScoreStatistics(): array
+    {
+        $connection = $this->analyticsConnection();
+        $scores = DB::connection($connection)
+            ->table('claim_ratings')
+            ->whereIn('status', [
+                'rated',
+                'approved',
+                'published',
+            ])
+            ->where('is_public', true)
+            ->whereNotNull('rating_score')
+            ->pluck('rating_score')
+            ->map(fn (mixed $score): float => $this->normalizeScore((float) $score))
+            ->values();
+
+        $buckets = [];
+
+        foreach (RatingDistributionCatalog::scoreBuckets() as $key => $bucket) {
+            $buckets[$key] = [
+                'label' => $bucket['label'],
+                'min' => $bucket['min'],
+                'max' => $bucket['max'],
+                'count' => 0,
+                'percent' => 0.0,
+            ];
+        }
+
+        foreach ($scores as $score) {
+            $bucketKey = $this->scoreBucketKey($score);
+
+            if ($bucketKey !== null) {
+                $buckets[$bucketKey]['count']++;
+            }
+        }
+
+        $total = max(1, $scores->count());
+
+        foreach ($buckets as $key => $bucket) {
+            $buckets[$key]['percent'] = round(((int) $bucket['count'] / $total) * 100, 2);
+        }
+
+        return [
+            'total' => $scores->count(),
+            'average' => $scores->isNotEmpty() ? round($scores->avg(), 3) : null,
+            'min' => $scores->isNotEmpty() ? round($scores->min(), 3) : null,
+            'max' => $scores->isNotEmpty() ? round($scores->max(), 3) : null,
+            'buckets' => $buckets,
+        ];
+    }
+
+    /**
+     * @param array<string, array{count?: int}> $scoreStats
+     * @return array<string, float>
+     */
+    private function calculateScoreWeights(array $scoreStats): array
+    {
+        $weights = RatingDistributionCatalog::defaultScoreWeights();
+
+        if ($scoreStats === []) {
+            return $weights;
+        }
+
+        $maxCount = max(1, max(array_map(fn (array $bucket): int => (int) ($bucket['count'] ?? 0), $scoreStats)));
+
+        foreach ($scoreStats as $key => $bucket) {
+            if (array_key_exists($key, $weights)) {
+                $weights[$key] = round(((int) ($bucket['count'] ?? 0) / $maxCount) * 100, 2);
+            }
+        }
+
+        return $weights;
+    }
+
+    /**
      * Hole die letzte Analyse
      */
     public function getLastAnalysis(): ?array
@@ -328,6 +416,77 @@ class RatingDistributionAnalyzer
         }
 
         return $analysis['stats'][$typeId] ?? [];
+    }
+
+    /**
+     * Liefert ein kompaktes, anonymes Analyseprofil fuer die AI-Generierung.
+     *
+     * @return array<string, mixed>
+     */
+    public function generationProfileFor(int $typeId, int $subtypeId, ?int $scheduledHour = null): array
+    {
+        $analysis = $this->getLastAnalysis();
+
+        if (! is_array($analysis)) {
+            return [
+                'available' => false,
+                'reason' => 'Keine gespeicherte Bewertungsanalyse vorhanden.',
+            ];
+        }
+
+        $stats = is_array($analysis['stats'] ?? null) ? $analysis['stats'] : [];
+        $typeStats = $this->valueByKey($stats, $typeId, []);
+        $typeStats = is_array($typeStats) ? $typeStats : [];
+        $subtypeStats = $this->valueByKey($typeStats, $subtypeId, []);
+        $subtypeStats = is_array($subtypeStats) ? $subtypeStats : [];
+
+        $typeWeights = is_array($analysis['type_weights'] ?? null) ? $analysis['type_weights'] : [];
+        $subtypeWeights = is_array($analysis['subtype_weights'] ?? null) ? $analysis['subtype_weights'] : [];
+        $typeSubtypeWeights = $this->valueByKey($subtypeWeights, $typeId, []);
+        $typeSubtypeWeights = is_array($typeSubtypeWeights) ? $typeSubtypeWeights : [];
+
+        $hourStats = is_array($analysis['hour_stats'] ?? null) ? $analysis['hour_stats'] : [];
+        $hourWeights = is_array($analysis['hour_weights'] ?? null) ? $analysis['hour_weights'] : [];
+        $scoreStats = is_array($analysis['score_stats'] ?? null) ? $analysis['score_stats'] : [];
+        $scoreWeights = is_array($analysis['score_weights'] ?? null) ? $analysis['score_weights'] : [];
+
+        $scheduledHourStats = $scheduledHour !== null
+            ? $this->valueByKey($hourStats, $scheduledHour, null)
+            : null;
+
+        return [
+            'available' => true,
+            'analyzed_at' => $analysis['analyzed_at'] ?? null,
+            'total_ratings' => (int) ($analysis['total_ratings'] ?? $analysis['total_ratings_analyzed'] ?? 0),
+            'selected_pair' => [
+                'insurance_type_id' => $typeId,
+                'insurance_subtype_id' => $subtypeId,
+                'sample_count' => (int) ($subtypeStats['count'] ?? 0),
+                'avg_score' => isset($subtypeStats['avg_score']) ? round((float) $subtypeStats['avg_score'], 2) : null,
+                'min_score' => isset($subtypeStats['min_score']) ? round((float) $subtypeStats['min_score'], 2) : null,
+                'max_score' => isset($subtypeStats['max_score']) ? round((float) $subtypeStats['max_score'], 2) : null,
+                'std_dev' => isset($subtypeStats['std_dev']) ? round((float) $subtypeStats['std_dev'], 2) : null,
+                'type_weight' => $this->toNullableFloat($this->valueByKey($typeWeights, $typeId, null)),
+                'subtype_weight' => $this->toNullableFloat($this->valueByKey($typeSubtypeWeights, $subtypeId, null)),
+            ],
+            'scheduled_hour' => [
+                'hour' => $scheduledHour,
+                'observed_count' => is_array($scheduledHourStats) ? (int) ($scheduledHourStats['count'] ?? 0) : null,
+                'observed_percent' => is_array($scheduledHourStats) ? (float) ($scheduledHourStats['percent'] ?? 0) : null,
+                'weight' => $scheduledHour !== null ? $this->toNullableFloat($this->valueByKey($hourWeights, $scheduledHour, null)) : null,
+            ],
+            'top_observed_hours' => $this->topHours($hourStats),
+            'score_distribution' => [
+                'stats' => $scoreStats,
+                'weights' => $this->mergeScoreWeights($scoreWeights),
+                'selected_pair_average' => isset($subtypeStats['avg_score']) ? round((float) $subtypeStats['avg_score'], 2) : null,
+            ],
+            'instructions' => [
+                'Nutze nur diese aggregierten Muster, keine echten Einzelfaelle.',
+                'Antworten muessen als interne synthetische Testdaten erkennbar bleiben.',
+                'Score-, Zeit- und Mengenmuster duerfen Orientierung geben, aber keine echten Erfahrungsberichte kopieren.',
+            ],
+        ];
     }
 
     private function analyticsConnection(): string
@@ -409,6 +568,21 @@ class RatingDistributionAnalyzer
         return $merged;
     }
 
+    /**
+     * @param array<string, mixed> $weights
+     * @return array<string, float>
+     */
+    private function mergeScoreWeights(array $weights): array
+    {
+        $merged = RatingDistributionCatalog::defaultScoreWeights();
+
+        foreach ($merged as $key => $default) {
+            $merged[$key] = $this->toWeight($weights[$key] ?? $default);
+        }
+
+        return $merged;
+    }
+
     private function toWeight(mixed $value): float
     {
         if ($value === null || $value === '') {
@@ -416,5 +590,66 @@ class RatingDistributionAnalyzer
         }
 
         return max(0.0, (float) str_replace(',', '.', (string) $value));
+    }
+
+    private function toNullableFloat(mixed $value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return round((float) str_replace(',', '.', (string) $value), 2);
+    }
+
+    private function valueByKey(array $array, int|string $key, mixed $default = null): mixed
+    {
+        return $array[$key] ?? $array[(string) $key] ?? $default;
+    }
+
+    private function normalizeScore(float $score): float
+    {
+        if ($score > 1.0) {
+            $score = $score / 5;
+        }
+
+        return max(0.0, min(0.99, $score));
+    }
+
+    private function scoreBucketKey(float $score): ?string
+    {
+        foreach (RatingDistributionCatalog::scoreBuckets() as $key => $bucket) {
+            if ($score >= (float) $bucket['min'] && $score <= (float) $bucket['max']) {
+                return $key;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<int, array{hour: int, count: int, percent: float}>
+     */
+    private function topHours(array $hourStats): array
+    {
+        uasort($hourStats, fn (mixed $left, mixed $right): int => $this->hourCount($right) <=> $this->hourCount($left));
+
+        return collect($hourStats)
+            ->take(8)
+            ->map(function (mixed $data, int|string $hour): array {
+                $data = is_array($data) ? $data : [];
+
+                return [
+                    'hour' => (int) $hour,
+                    'count' => (int) ($data['count'] ?? 0),
+                    'percent' => round((float) ($data['percent'] ?? 0), 2),
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function hourCount(mixed $data): int
+    {
+        return is_array($data) ? (int) ($data['count'] ?? 0) : 0;
     }
 }

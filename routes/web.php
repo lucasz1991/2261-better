@@ -2,7 +2,7 @@
 
 use App\Livewire\Admin\ClaimRatings;
 use App\Livewire\Admin\Employees;
-use App\Livewire\Admin\Tests\FormScriptTests;
+use App\Livewire\Admin\PlannedClaimRatings;
 use App\Livewire\AdminConfig;
 use App\Livewire\AdminDashboard;
 use Illuminate\Http\Request;
@@ -44,31 +44,6 @@ Route::middleware(['auth:sanctum', 'auth.status', config('jetstream.auth_session
         Route::get('/index', AdminDashboard::class)->name('index');
         Route::get('/config', AdminConfig::class)->name('config');
         Route::get('/reviews', ClaimRatings::class)->name('reviews');
-        Route::get('/form-script-tests/screenshot', function (Request $request) {
-            abort_unless($request->user()?->can('form_tests.run'), 403);
-
-            $relativePath = str_replace('\\', '/', (string) $request->query('path', ''));
-
-            abort_if($relativePath === '' || str_contains($relativePath, '..'), 404);
-
-            $basePath = realpath(storage_path('app/public/screenshots/regulierungs-check'));
-            $imagePath = realpath(storage_path('app/public/screenshots/regulierungs-check/'.$relativePath));
-
-            abort_unless($basePath && $imagePath, 404);
-
-            $basePath = rtrim(str_replace('\\', '/', $basePath), '/').'/';
-            $imagePathForCheck = str_replace('\\', '/', $imagePath);
-
-            abort_unless(
-                str_starts_with($imagePathForCheck, $basePath)
-                && str_ends_with(strtolower($imagePathForCheck), '.png'),
-                404
-            );
-
-            return response()->file($imagePath, [
-                'Content-Type' => 'image/png',
-            ]);
-        })->name('form-script-tests.screenshot');
-        Route::get('/form-script-tests', FormScriptTests::class)->name('form-script-tests');
+        Route::get('/planned-reviews', PlannedClaimRatings::class)->name('planned-reviews');
         Route::get('/employees', Employees::class)->name('employees');
 });

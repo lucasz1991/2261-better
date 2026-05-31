@@ -166,6 +166,43 @@ class AiConnection
     }
 
     /**
+     * Generate an internal synthetic rating payload for workflow tests.
+     */
+    public function generateSyntheticClaimRatingPayload(array $requestData): array
+    {
+        Log::info('generateSyntheticClaimRatingPayload Run');
+
+        $trainContent = $requestData['trainContent'];
+        $context = json_encode($requestData['context'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        $defaultResponse = [
+            'answers' => [],
+            'generation_comment' => '',
+        ];
+
+        $userPrompt = <<<TEXT
+            context: {$context}
+            TEXT;
+
+        try {
+            $response = $this->callOpenRouter($trainContent, $userPrompt);
+
+            if (! isset($response['answers']) || ! is_array($response['answers'])) {
+                throw new \Exception('Missing required answers array in AI response');
+            }
+
+            return [
+                'answers' => $response['answers'],
+                'generation_comment' => $this->cleanText((string) ($response['generation_comment'] ?? '')),
+            ];
+        } catch (\Exception $e) {
+            Log::error('generateSyntheticClaimRatingPayload failed: '.$e->getMessage());
+
+            return $defaultResponse;
+        }
+    }
+
+    /**
      * Rufe die OpenRouter API auf mit Retry-Logik
      */
     private function callOpenRouter(string $systemContent, string $userContent): array

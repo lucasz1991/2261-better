@@ -108,6 +108,15 @@
                     </button>
                     <button
                         type="button"
+                        @click="ratingSection = 'scores'"
+                        :class="ratingSection === 'scores' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'"
+                        class="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm font-medium transition-colors"
+                    >
+                        <span>Scorings</span>
+                        <span class="text-xs opacity-75">{{ number_format($this->scoreWeightTotal, 0, ',', '.') }}</span>
+                    </button>
+                    <button
+                        type="button"
                         @click="ratingSection = 'types'"
                         :class="ratingSection === 'types' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'"
                         class="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm font-medium transition-colors"
@@ -125,7 +134,7 @@
 
             <main class="min-w-0 space-y-5">
                 <section x-show.important="ratingSection === 'overview'" class="space-y-5">
-                    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                         <div class="rounded-lg border border-slate-200 bg-white p-4">
                             <div class="text-xs font-medium uppercase tracking-wide text-slate-500">Tagesziel</div>
                             <div class="mt-2 text-2xl font-semibold text-slate-900">{{ $dailyTarget }}</div>
@@ -141,6 +150,10 @@
                         <div class="rounded-lg border border-slate-200 bg-white p-4">
                             <div class="text-xs font-medium uppercase tracking-wide text-slate-500">Staerkste Zeiten</div>
                             <div class="mt-2 text-sm font-semibold leading-6 text-slate-900">{{ $this->peakHours }}</div>
+                        </div>
+                        <div class="rounded-lg border border-slate-200 bg-white p-4">
+                            <div class="text-xs font-medium uppercase tracking-wide text-slate-500">Score-Mix</div>
+                            <div class="mt-2 text-2xl font-semibold text-slate-900">{{ number_format($this->scoreWeightTotal, 1, ',', '.') }}</div>
                         </div>
                     </div>
 
@@ -190,6 +203,7 @@
                                     <div class="rounded-md bg-white/70 px-3 py-2">Durchschnittlicher Bewertungsscore</div>
                                     <div class="rounded-md bg-white/70 px-3 py-2">Konsistenz der Scores</div>
                                     <div class="rounded-md bg-white/70 px-3 py-2">Typische Uhrzeiten bisheriger Bewertungen</div>
+                                    <div class="rounded-md bg-white/70 px-3 py-2">Score-Verteilung von schlecht bis sehr gut</div>
                                 </div>
                             </div>
 
@@ -282,6 +296,64 @@
                                 </div>
                             @endforeach
                         </div>
+                    </div>
+                </section>
+
+                <section x-cloak x-show.important="ratingSection === 'scores'" style="display: none;" class="space-y-5">
+                    <div class="rounded-lg border border-slate-200 bg-white p-4">
+                        <div class="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                            <div>
+                                <h2 class="font-semibold text-slate-900">Score-Verteilung</h2>
+                                <p class="mt-1 text-sm text-slate-500">Diese Gewichte steuern, ob geplante interne Bewertungen eher schlecht, mittel oder gut ausfallen sollen.</p>
+                            </div>
+                            <div class="text-sm text-slate-600">
+                                Summe: <span class="font-semibold text-slate-900">{{ number_format($this->scoreWeightTotal, 1, ',', '.') }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    @php($scoreStats = is_array($lastAnalysis['score_stats']['buckets'] ?? null) ? $lastAnalysis['score_stats']['buckets'] : [])
+
+                    <div class="grid gap-3 xl:grid-cols-5">
+                        @foreach($formattedScoreBuckets as $bucketData)
+                            <div class="rounded-lg border border-slate-200 bg-white p-4">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div>
+                                        <div class="font-semibold text-slate-900">{{ $bucketData['label'] }}</div>
+                                        <div class="mt-1 text-xs text-slate-500">
+                                            {{ number_format((float) $bucketData['min'], 2, ',', '.') }} bis {{ number_format((float) $bucketData['max'], 2, ',', '.') }}
+                                        </div>
+                                    </div>
+                                    <span class="rounded-full border px-2 py-1 text-xs font-medium {{ $bucketData['tone'] }}">
+                                        {{ number_format($bucketData['percent'], 1, ',', '.') }}%
+                                    </span>
+                                </div>
+
+                                <div class="mt-4">
+                                    <div class="mb-1 flex items-center justify-between text-xs text-slate-500">
+                                        <span>Echt: {{ $bucketData['count'] }}</span>
+                                        <span>Gewicht</span>
+                                    </div>
+                                    <div class="h-2 overflow-hidden rounded-full bg-slate-100">
+                                        <div class="h-full rounded-full bg-blue-600" style="width: {{ min(100, max(0, $bucketData['percent'])) }}%"></div>
+                                    </div>
+                                </div>
+
+                                <input
+                                    type="number"
+                                    min="0"
+                                    step="0.1"
+                                    wire:model.defer="scoreWeights.{{ $bucketData['key'] }}"
+                                    class="mt-4 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                    aria-label="Score-Gewicht {{ $bucketData['label'] }}"
+                                >
+                            </div>
+                        @endforeach
+                    </div>
+
+                    <div class="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+                        <div class="font-semibold">Einbindung in Planung und Ausfuehrung</div>
+                        <p class="mt-1">Beim Planen wird pro Bewertung ein Ziel-Score-Profil gezogen und im Datensatz gespeichert. Die AI erhaelt dieses Profil beim Vorbereiten oder Ausfuehren als Kontext.</p>
                     </div>
                 </section>
 
