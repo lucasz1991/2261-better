@@ -54,8 +54,8 @@ class SyntheticRatingUser extends Model
             'status' => true,
             'email_verified_at' => now(),
             'data' => [
-                'synthetic' => true,
-                'do_not_publish' => true,
+                'synthetic' => false,
+                'do_not_publish' => false,
                 'source_app' => '2261-better',
                 'created_by' => $claimRating ? 'claim_rating_ai_generation' : 'claim_rating_planning',
                 'created_from_claim_rating_id' => $claimRating?->id,
@@ -116,10 +116,10 @@ class SyntheticRatingUser extends Model
                     'email_domain' => self::domainFromEmail($email) ?? 'gmail.com',
                     'role' => (string) ($profile['role'] ?? 'guest'),
                     'status' => (bool) ($profile['status'] ?? true),
-                    'email_verified_at' => now(),
+                    'email_verified_at' => $this->email_verified_at?->toDateTimeString() ?? now()->toDateTimeString(),
                     'data' => [
-                        'synthetic' => true,
-                        'do_not_publish' => true,
+                        'synthetic' => false,
+                        'do_not_publish' => false,
                         'source_app' => '2261-better',
                         'created_from_claim_rating_id' => $claimRating->id,
                         'persona' => $persona,
@@ -162,7 +162,7 @@ class SyntheticRatingUser extends Model
             'email_domain' => $this->email_domain,
             'role' => $this->role,
             'status' => $this->status,
-            'email_verified_at' => $this->email_verified_at?->toDateTimeString(),
+            'email_verified_at' => $this->email_verified_at?->toDateTimeString() ?? now()->toDateTimeString(),
             'persona' => data_get($this->data ?? [], 'persona', []),
             'privacy_settings' => $this->privacySettings(),
         ];
@@ -584,6 +584,7 @@ class SyntheticRatingUser extends Model
             'last_name' => $nameMode === 'realistic' ? $lastName : null,
             'alias' => $nameMode === 'simple' ? $visibleName : null,
             'display_name' => $visibleName,
+
             'age_range' => $ageRange,
             'region' => $region['state'],
             'city' => $region['city'],
