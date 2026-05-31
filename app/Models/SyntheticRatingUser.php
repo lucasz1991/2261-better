@@ -113,10 +113,10 @@ class SyntheticRatingUser extends Model
                 [
                     'base_user_id' => $claimRating->base_user_id,
                     'name' => $profileName,
-                    'email_domain' => self::domainFromEmail($email) ?? 'gmail.com',
+                    'email_domain' => self::domainFromEmail($email) ?? 'example.invalid',
                     'role' => (string) ($profile['role'] ?? 'guest'),
                     'status' => (bool) ($profile['status'] ?? true),
-                    'email_verified_at' => $this->email_verified_at?->toDateTimeString() ?? now()->toDateTimeString(),
+                    'email_verified_at' => (string) ($profile['email_verified_at'] ?? now()->toDateTimeString()),
                     'data' => [
                         'synthetic' => false,
                         'do_not_publish' => false,
@@ -125,7 +125,7 @@ class SyntheticRatingUser extends Model
                         'persona' => $persona,
                         'name_mode' => $nameMode,
                         'email_profile' => [
-                            'domain' => self::domainFromEmail($email) ?? 'gmail.com',
+                            'domain' => self::domainFromEmail($email) ?? 'example.invalid',
                             'source' => data_get($profile, 'email_profile.source', 'planning_profile'),
                             'excluded_domains' => self::excludedEmailDomains(),
                         ],
@@ -205,8 +205,6 @@ class SyntheticRatingUser extends Model
             'data' => $data,
         ])->saveQuietly();
 
-        // Löschen des synthetischen Benutzers
-        $this->delete();
     }
 
     /**
@@ -433,7 +431,7 @@ class SyntheticRatingUser extends Model
 
         $token = substr(preg_replace('/[^a-z0-9]/', '', strtolower($token)) ?: Str::random(8), 0, 8);
 
-        return "{$namePart}-{$token}@{$domain}";
+        return "synthetic-2261-{$namePart}-{$token}@{$domain}";
     }
 
     private static function isSynthetic2261Email(string $email): bool

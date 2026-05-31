@@ -286,7 +286,7 @@ class BaseClaimRatingPublisher
         $payload = [
             'name' => $syntheticUser->name,
             'email' => $syntheticUser->email,
-            'email_verified_at' => null,
+            'email_verified_at' => $syntheticUser->email_verified_at ?? $now,
             'password' => Hash::make(Str::random(40)),
             'role' => $syntheticUser->role ?: 'guest',
             'status' => (bool) $syntheticUser->status,
@@ -327,23 +327,13 @@ class BaseClaimRatingPublisher
     private function isOwnSyntheticBaseUser(object $baseUser): bool
     {
         $email = (string) ($baseUser->email ?? '');
-        $name = (string) ($baseUser->name ?? '');
 
         if (! $this->isOwnSyntheticEmail($email)) {
             return false;
         }
 
-        if (
-            str_starts_with($name, 'Interner Testnutzer 2261')
-            || str_starts_with($name, 'Anonyme Testperson')
-            || str_starts_with($name, 'Testperson ')
-            || str_contains($name, '(Testperson)')
-        ) {
-            return true;
-        }
-
-        return Schema::hasTable('synthetic_rating_users')
-            && SyntheticRatingUser::withTrashed()->where('email', $email)->exists();
+        // Der 2261-Prefix markiert den Datensatz bereits eindeutig als lokalen synthetischen Benutzer.
+        return true;
     }
 
     private function isOwnSyntheticEmail(string $email): bool
