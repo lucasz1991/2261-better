@@ -179,7 +179,7 @@ TEXT;
 
         return [
             'safety' => [
-                'synthetic' => true,
+                'synthetic' => false,
                 'internal_only' => false,
                 'do_not_publish' => false,
                 'use_only_aggregate_patterns' => false,
