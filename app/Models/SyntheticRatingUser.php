@@ -54,8 +54,8 @@ class SyntheticRatingUser extends Model
             'status' => true,
             'email_verified_at' => now(),
             'data' => [
-                'synthetic' => false,
-                'do_not_publish' => false,
+                'synthetic' => true,
+                'do_not_publish' => true,
                 'source_app' => '2261-better',
                 'created_by' => $claimRating ? 'claim_rating_ai_generation' : 'claim_rating_planning',
                 'created_from_claim_rating_id' => $claimRating?->id,
@@ -118,8 +118,8 @@ class SyntheticRatingUser extends Model
                     'status' => (bool) ($profile['status'] ?? true),
                     'email_verified_at' => (string) ($profile['email_verified_at'] ?? now()->toDateTimeString()),
                     'data' => [
-                        'synthetic' => false,
-                        'do_not_publish' => false,
+                        'synthetic' => true,
+                        'do_not_publish' => true,
                         'source_app' => '2261-better',
                         'created_from_claim_rating_id' => $claimRating->id,
                         'persona' => $persona,

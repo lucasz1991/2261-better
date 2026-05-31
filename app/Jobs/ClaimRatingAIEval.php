@@ -82,7 +82,7 @@ class ClaimRatingAIEval implements ShouldQueue
         }
 
         $this->claimRating->status = ClaimRating::STATUS_RATED;
-        $this->claimRating->is_public = false;
+        $this->claimRating->is_public = (bool) ($data['synthetic'] ?? false);
 
         if ($this->markExecuted && ($data['synthetic'] ?? false) === true && ! $this->claimRating->executed_at) {
             $this->claimRating->executed_at = now();

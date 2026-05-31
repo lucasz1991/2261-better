@@ -24,6 +24,8 @@ class BaseClaimRatingPublisher
                     throw new \RuntimeException('Die vorhandene Base-ID gehoert nicht zu diesem synthetischen 2261-better Datensatz.');
                 }
 
+                $this->syncExistingBaseRating($rating, (int) $rating->base_claim_rating_id);
+
                 return (int) $rating->base_claim_rating_id;
             }
         }
@@ -54,6 +56,7 @@ class BaseClaimRatingPublisher
                 'connection' => $connection,
                 'synthetic' => true,
                 'do_not_publish' => true,
+                'public_demo_visibility' => true,
             ];
 
             $rating->forceFill([
@@ -63,7 +66,7 @@ class BaseClaimRatingPublisher
                 'execution_started_at' => $rating->execution_started_at ?? $now,
                 'executed_at' => $rating->executed_at ?? $now,
                 'last_execution_error' => null,
-                'is_public' => false,
+                'is_public' => true,
                 'data' => $data,
             ])->saveQuietly();
 
@@ -183,6 +186,45 @@ class BaseClaimRatingPublisher
             ->first();
     }
 
+    private function syncExistingBaseRating(ClaimRating $rating, int $baseId): void
+    {
+        $connection = RegCheckDatabase::connectionName();
+        $now = now();
+
+        DB::connection($connection)->transaction(function () use ($connection, $rating, $baseId, $now): void {
+            $baseUserId = $this->ensureSyntheticBaseUser($connection, $rating, $now);
+            $rating->refresh();
+            $payload = $this->basePayload($rating, $now);
+            $payload['user_id'] = $baseUserId;
+            unset($payload['created_at']);
+
+            DB::connection($connection)
+                ->table('claim_ratings')
+                ->where('id', $baseId)
+                ->update($this->filterPayloadForTable($connection, $payload));
+
+            $data = $rating->data ?? [];
+            $data['base_publish'] = array_merge($data['base_publish'] ?? [], [
+                'base_claim_rating_id' => $baseId,
+                'base_user_id' => $baseUserId,
+                'synthetic_rating_user_id' => $rating->synthetic_rating_user_id,
+                'synced_at' => $now->toDateTimeString(),
+                'connection' => $connection,
+                'synthetic' => true,
+                'do_not_publish' => true,
+                'public_demo_visibility' => true,
+            ]);
+
+            $rating->forceFill([
+                'base_user_id' => $baseUserId,
+                'status' => ClaimRating::STATUS_RATED,
+                'last_execution_error' => null,
+                'is_public' => true,
+                'data' => $data,
+            ])->saveQuietly();
+        });
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -213,8 +255,8 @@ class BaseClaimRatingPublisher
             'attachments' => json_encode($rating->attachments ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             'rating_score' => $rating->rating_score,
             'tag_ids' => json_encode($rating->tag_ids ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            'moderator_comment' => 'Synthetischer interner Testdatensatz aus 2261-better. Nicht veroeffentlichen.',
-            'is_public' => false,
+            'moderator_comment' => 'Synthetischer Testdatensatz aus 2261-better.',
+            'is_public' => true,
             'admin_review' => json_encode($adminReview, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             'data' => json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             'verification_hash' => (string) Str::uuid(),
@@ -328,12 +370,21 @@ class BaseClaimRatingPublisher
     {
         $email = (string) ($baseUser->email ?? '');
 
-        if (! $this->isOwnSyntheticEmail($email)) {
+        if ($this->isOwnSyntheticEmail($email)) {
+            return true;
+        }
+
+        $baseUserId = (int) ($baseUser->id ?? 0);
+
+        if ($baseUserId <= 0 || $email === '' || ! Schema::hasTable('synthetic_rating_users')) {
             return false;
         }
 
-        // Der 2261-Prefix markiert den Datensatz bereits eindeutig als lokalen synthetischen Benutzer.
-        return true;
+        return SyntheticRatingUser::withTrashed()
+            ->where('base_user_id', $baseUserId)
+            ->where('email', $email)
+            ->where('data->source_app', '2261-better')
+            ->exists();
     }
 
     private function isOwnSyntheticEmail(string $email): bool
@@ -370,11 +421,7 @@ class BaseClaimRatingPublisher
             ? DB::connection($connection)
                 ->table('claim_ratings')
                 ->where('user_id', $baseUserId)
-                ->where(function ($query) {
-                    $query
-                        ->whereRaw("JSON_EXTRACT(data, '$.source_app') = '2261-better'")
-                        ->orWhereRaw("JSON_EXTRACT(admin_review, '$.source_app') = '2261-better'");
-                })
+                ->where($this->sourceAppJsonWhere())
                 ->count()
             : 0;
 
@@ -419,11 +466,7 @@ class BaseClaimRatingPublisher
                 ? DB::connection($connection)
                     ->table('claim_ratings')
                     ->where('user_id', (int) $user->id)
-                    ->where(function ($query) {
-                        $query
-                            ->whereRaw("JSON_EXTRACT(data, '$.source_app') = '2261-better'")
-                            ->orWhereRaw("JSON_EXTRACT(admin_review, '$.source_app') = '2261-better'");
-                    })
+                    ->where($this->sourceAppJsonWhere())
                     ->count()
                 : 0;
 
@@ -498,6 +541,15 @@ class BaseClaimRatingPublisher
             'is_public' => false,
             'data' => $data,
         ])->saveQuietly();
+    }
+
+    private function sourceAppJsonWhere(): \Closure
+    {
+        return function ($query): void {
+            $query
+                ->whereRaw("JSON_UNQUOTE(JSON_EXTRACT(data, '$.source_app')) = '2261-better'")
+                ->orWhereRaw("JSON_UNQUOTE(JSON_EXTRACT(admin_review, '$.source_app')) = '2261-better'");
+        };
     }
 
     /**

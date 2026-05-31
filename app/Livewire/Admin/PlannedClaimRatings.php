@@ -126,7 +126,7 @@ class PlannedClaimRatings extends Component
                     'execution_started_at' => $rating->execution_started_at ?? $executedAt,
                     'executed_at' => $rating->executed_at ?? $executedAt,
                     'last_execution_error' => null,
-                    'is_public' => false,
+                    'is_public' => true,
                 ])->saveQuietly();
 
                 app(BaseClaimRatingPublisher::class)->publish($rating->fresh());

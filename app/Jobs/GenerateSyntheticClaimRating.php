@@ -177,10 +177,10 @@ TEXT;
 
         return [
             'safety' => [
-                'synthetic' => false,
-                'internal_only' => false,
-                'do_not_publish' => false,
-                'use_only_aggregate_patterns' => false,
+                'synthetic' => true,
+                'internal_only' => true,
+                'do_not_publish' => true,
+                'use_only_aggregate_patterns' => true,
             ],
             'insurance_type' => $baseContext['insurance_type'] ?? [],
             'insurance_subtype' => $baseContext['insurance_subtype'] ?? [],

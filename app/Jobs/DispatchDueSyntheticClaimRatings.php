@@ -154,7 +154,7 @@ class DispatchDueSyntheticClaimRatings implements ShouldQueue
             'execution_started_at' => $executedAt,
             'executed_at' => $executedAt,
             'last_execution_error' => null,
-            'is_public' => false,
+            'is_public' => true,
             'data' => $data,
         ])->saveQuietly();
 
