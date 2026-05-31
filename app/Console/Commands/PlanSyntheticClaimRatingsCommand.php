@@ -50,13 +50,15 @@ class PlanSyntheticClaimRatingsCommand extends Command
         if (! empty($report['created'])) {
             $this->info('Neu geplante Bewertungen');
             $this->table(
-                ['ID', 'Geplant fuer', 'Typ', 'Untertyp', 'Versicherung', 'Fragebogen'],
+                ['ID', 'Geplant fuer', 'Typ', 'Untertyp', 'Versicherung', 'Zielscore', 'Testnutzer', 'Fragebogen'],
                 collect($report['created'])->map(fn (array $item): array => [
                     '#' . ($item['id'] ?? '-'),
                     $item['scheduled_for'] ?? '-',
                     ($item['type_id'] ?? '-') . ' - ' . ($item['type_name'] ?? '-'),
                     ($item['subtype_id'] ?? '-') . ' - ' . ($item['subtype_name'] ?? '-'),
                     ($item['insurance_id'] ?? '-') . ' - ' . ($item['insurance_name'] ?? '-'),
+                    $item['target_score_label'] ?? '-',
+                    $item['synthetic_user_email'] ?? '-',
                     $item['questionnaire_version_id'] ?? '-',
                 ])->all()
             );

@@ -117,6 +117,15 @@
                     </button>
                     <button
                         type="button"
+                        @click="ratingSection = 'users'"
+                        :class="ratingSection === 'users' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'"
+                        class="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm font-medium transition-colors"
+                    >
+                        <span>Benutzer</span>
+                        <span class="text-xs opacity-75">{{ $lastAnalysis['user_stats']['unique_users'] ?? 0 }}</span>
+                    </button>
+                    <button
+                        type="button"
                         @click="ratingSection = 'types'"
                         :class="ratingSection === 'types' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'"
                         class="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm font-medium transition-colors"
@@ -134,7 +143,7 @@
 
             <main class="min-w-0 space-y-5">
                 <section x-show.important="ratingSection === 'overview'" class="space-y-5">
-                    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
                         <div class="rounded-lg border border-slate-200 bg-white p-4">
                             <div class="text-xs font-medium uppercase tracking-wide text-slate-500">Tagesziel</div>
                             <div class="mt-2 text-2xl font-semibold text-slate-900">{{ $dailyTarget }}</div>
@@ -154,6 +163,10 @@
                         <div class="rounded-lg border border-slate-200 bg-white p-4">
                             <div class="text-xs font-medium uppercase tracking-wide text-slate-500">Score-Mix</div>
                             <div class="mt-2 text-2xl font-semibold text-slate-900">{{ number_format($this->scoreWeightTotal, 1, ',', '.') }}</div>
+                        </div>
+                        <div class="rounded-lg border border-slate-200 bg-white p-4">
+                            <div class="text-xs font-medium uppercase tracking-wide text-slate-500">Benutzer-Muster</div>
+                            <div class="mt-2 text-2xl font-semibold text-slate-900">{{ $lastAnalysis['user_stats']['ratings_with_user'] ?? 0 }}</div>
                         </div>
                     </div>
 
@@ -204,6 +217,7 @@
                                     <div class="rounded-md bg-white/70 px-3 py-2">Konsistenz der Scores</div>
                                     <div class="rounded-md bg-white/70 px-3 py-2">Typische Uhrzeiten bisheriger Bewertungen</div>
                                     <div class="rounded-md bg-white/70 px-3 py-2">Score-Verteilung von schlecht bis sehr gut</div>
+                                    <div class="rounded-md bg-white/70 px-3 py-2">Benutzer- und E-Mail-Domain-Muster aggregiert</div>
                                 </div>
                             </div>
 
@@ -355,6 +369,104 @@
                         <div class="font-semibold">Einbindung in Planung und Ausfuehrung</div>
                         <p class="mt-1">Beim Planen wird pro Bewertung ein Ziel-Score-Profil gezogen und im Datensatz gespeichert. Die AI erhaelt dieses Profil beim Vorbereiten oder Ausfuehren als Kontext.</p>
                     </div>
+                </section>
+
+                <section x-cloak x-show.important="ratingSection === 'users'" style="display: none;" class="space-y-5">
+                    @php($userStats = is_array($lastAnalysis['user_stats'] ?? null) ? $lastAnalysis['user_stats'] : [])
+
+                    <div class="rounded-lg border border-slate-200 bg-white p-4">
+                        <div class="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                            <div>
+                                <h2 class="font-semibold text-slate-900">Benutzer-Muster</h2>
+                                <p class="mt-1 text-sm text-slate-500">Aggregierte Herkunft der Benutzerverknuepfung und E-Mail-Domains echter Bewertungen.</p>
+                            </div>
+                            <span class="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">
+                                Keine echten Mailadressen gespeichert
+                            </span>
+                        </div>
+                    </div>
+
+                    @if(! ($userStats['available'] ?? false))
+                        <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                            {{ $userStats['reason'] ?? 'Noch keine Benutzeranalyse vorhanden. Starte zuerst die Bewertungsanalyse.' }}
+                        </div>
+                    @else
+                        <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                            <div class="rounded-lg border border-slate-200 bg-white p-4">
+                                <div class="text-xs font-medium uppercase tracking-wide text-slate-500">Bewertungen</div>
+                                <div class="mt-2 text-2xl font-semibold text-slate-900">{{ $userStats['total_ratings'] ?? 0 }}</div>
+                            </div>
+                            <div class="rounded-lg border border-slate-200 bg-white p-4">
+                                <div class="text-xs font-medium uppercase tracking-wide text-slate-500">Mit Benutzer</div>
+                                <div class="mt-2 text-2xl font-semibold text-slate-900">{{ number_format((float) ($userStats['ratings_with_user_percent'] ?? 0), 1, ',', '.') }}%</div>
+                            </div>
+                            <div class="rounded-lg border border-slate-200 bg-white p-4">
+                                <div class="text-xs font-medium uppercase tracking-wide text-slate-500">Ohne Benutzer</div>
+                                <div class="mt-2 text-2xl font-semibold text-slate-900">{{ $userStats['ratings_without_user'] ?? 0 }}</div>
+                            </div>
+                            <div class="rounded-lg border border-slate-200 bg-white p-4">
+                                <div class="text-xs font-medium uppercase tracking-wide text-slate-500">Unique User</div>
+                                <div class="mt-2 text-2xl font-semibold text-slate-900">{{ $userStats['unique_users'] ?? 0 }}</div>
+                            </div>
+                            <div class="rounded-lg border border-slate-200 bg-white p-4">
+                                <div class="text-xs font-medium uppercase tracking-wide text-slate-500">E-Mail verifiziert</div>
+                                <div class="mt-2 text-2xl font-semibold text-slate-900">{{ number_format((float) ($userStats['verified_email_percent'] ?? 0), 1, ',', '.') }}%</div>
+                            </div>
+                        </div>
+
+                        <div class="grid gap-4 xl:grid-cols-3">
+                            <div class="rounded-lg border border-slate-200 bg-white p-4">
+                                <h3 class="text-sm font-semibold text-slate-900">Top E-Mail-Domains</h3>
+                                <div class="mt-3 space-y-2">
+                                    @forelse(($userStats['email_domains'] ?? []) as $domain)
+                                        <div class="flex items-center justify-between gap-3 rounded-md bg-slate-50 px-3 py-2 text-sm">
+                                            <span class="font-medium text-slate-800">{{ $domain['domain'] ?? '-' }}</span>
+                                            <span class="text-slate-500">{{ $domain['count'] ?? 0 }} · {{ number_format((float) ($domain['percent'] ?? 0), 1, ',', '.') }}%</span>
+                                        </div>
+                                    @empty
+                                        <div class="text-sm text-slate-500">Keine Domains erkannt.</div>
+                                    @endforelse
+                                </div>
+                            </div>
+
+                            <div class="rounded-lg border border-slate-200 bg-white p-4">
+                                <h3 class="text-sm font-semibold text-slate-900">Rollen</h3>
+                                <div class="mt-3 space-y-2">
+                                    @forelse(($userStats['roles'] ?? []) as $role)
+                                        <div class="flex items-center justify-between gap-3 rounded-md bg-slate-50 px-3 py-2 text-sm">
+                                            <span class="font-medium text-slate-800">{{ $role['role'] ?? '-' }}</span>
+                                            <span class="text-slate-500">{{ $role['count'] ?? 0 }}</span>
+                                        </div>
+                                    @empty
+                                        <div class="text-sm text-slate-500">Keine Rollen erkannt.</div>
+                                    @endforelse
+                                </div>
+                            </div>
+
+                            <div class="rounded-lg border border-slate-200 bg-white p-4">
+                                <h3 class="text-sm font-semibold text-slate-900">Quelle</h3>
+                                <dl class="mt-3 space-y-3 text-sm">
+                                    <div>
+                                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Verknuepfung</dt>
+                                        <dd class="mt-1 text-slate-800">{{ $userStats['source']['rating_user_link'] ?? '-' }}</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">E-Mail-Muster</dt>
+                                        <dd class="mt-1 text-slate-800">{{ $userStats['source']['email_pattern'] ?? '-' }}</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Filter</dt>
+                                        <dd class="mt-1 text-slate-800">{{ $userStats['source']['visibility_filter'] ?? '-' }}</dd>
+                                    </div>
+                                </dl>
+                            </div>
+                        </div>
+
+                        <div class="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+                            <div class="font-semibold">Einbindung in Planung und Ausfuehrung</div>
+                            <p class="mt-1">Geplante Bewertungen erhalten ein eindeutig markiertes synthetisches Testnutzer-Profil mit <span class="font-mono">example.invalid</span>. Beim Base-Schreiben wird dieser Testnutzer angelegt, lokal als Base-User-ID gespeichert und beim Rueckruf wieder entfernt.</p>
+                        </div>
+                    @endif
                 </section>
 
                 <section x-cloak x-show.important="ratingSection === 'types'" style="display: none;" class="space-y-5">

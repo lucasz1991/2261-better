@@ -39,19 +39,39 @@
                             <dd class="mt-1 text-slate-900">{{ $selectedRating->base_claim_rating_id ? '#' . $selectedRating->base_claim_rating_id : '-' }}</dd>
                         </div>
                         <div>
+                            <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Base-User-ID</dt>
+                            <dd class="mt-1 text-slate-900">{{ $selectedRating->base_user_id ? '#' . $selectedRating->base_user_id : '-' }}</dd>
+                        </div>
+                        <div>
                             <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Versicherung</dt>
-                            <dd class="mt-1 text-slate-900">{{ $selectedRating->insurance_id ?? '-' }}</dd>
+                            <dd class="mt-1 text-slate-900">{{ data_get($selectedRating->data, 'base_context.insurance.name') ?: ($selectedRating->insurance_id ?? '-') }}</dd>
                         </div>
                         <div>
                             <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Art</dt>
-                            <dd class="mt-1 text-slate-900">{{ $selectedRating->insurance_type_id ?? '-' }}</dd>
+                            <dd class="mt-1 text-slate-900">{{ data_get($selectedRating->data, 'base_context.insurance_type.name') ?: ($selectedRating->insurance_type_id ?? '-') }}</dd>
                         </div>
                         <div>
                             <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Unterart</dt>
-                            <dd class="mt-1 text-slate-900">{{ $selectedRating->insurance_subtype_id ?? '-' }}</dd>
+                            <dd class="mt-1 text-slate-900">{{ data_get($selectedRating->data, 'base_context.insurance_subtype.name') ?: ($selectedRating->insurance_subtype_id ?? '-') }}</dd>
                         </div>
                     </dl>
                 </div>
+
+                @if(is_array(data_get($selectedRating->data, 'planning.synthetic_user_profile')))
+                    <div class="rounded-md border border-blue-200 bg-blue-50 p-4">
+                        <h3 class="text-sm font-semibold text-blue-950">Synthetischer Testnutzer</h3>
+                        <dl class="mt-3 grid gap-3 text-sm md:grid-cols-2">
+                            <div>
+                                <dt class="text-xs font-medium uppercase tracking-wide text-blue-700">Name</dt>
+                                <dd class="mt-1 text-blue-950">{{ data_get($selectedRating->data, 'planning.synthetic_user_profile.name', '-') }}</dd>
+                            </div>
+                            <div>
+                                <dt class="text-xs font-medium uppercase tracking-wide text-blue-700">E-Mail</dt>
+                                <dd class="mt-1 text-blue-950">{{ data_get($selectedRating->data, 'planning.synthetic_user_profile.email', '-') }}</dd>
+                            </div>
+                        </dl>
+                    </div>
+                @endif
 
                 <div class="rounded-md border border-slate-200 bg-slate-50 p-4">
                     <div class="flex items-center justify-between gap-3">

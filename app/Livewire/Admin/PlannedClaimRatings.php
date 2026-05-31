@@ -44,7 +44,7 @@ class PlannedClaimRatings extends Component
 
     public function sortBy(string $field): void
     {
-        if (! in_array($field, ['id', 'base_claim_rating_id', 'scheduled_for', 'executed_at', 'execution_attempts', 'status', 'rating_score', 'created_at'], true)) {
+        if (! in_array($field, ['id', 'base_claim_rating_id', 'base_user_id', 'synthetic_rating_user_id', 'scheduled_for', 'executed_at', 'execution_attempts', 'status', 'rating_score', 'created_at'], true)) {
             return;
         }
 
@@ -193,7 +193,9 @@ class PlannedClaimRatings extends Component
 
     private function plannedQuery(): Builder
     {
-        return ClaimRating::query()->planned();
+        return ClaimRating::query()
+            ->with('syntheticUser')
+            ->planned();
     }
 
     private function applyExecutionFilter(Builder $query, string $filter): Builder

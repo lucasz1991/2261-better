@@ -41,7 +41,7 @@ class ClaimRatings extends Component
 
     public function sortBy(string $field): void
     {
-        if (! in_array($field, ['id', 'base_claim_rating_id', 'rating_score', 'status', 'is_public', 'created_at', 'executed_at'], true)) {
+        if (! in_array($field, ['id', 'base_claim_rating_id', 'base_user_id', 'synthetic_rating_user_id', 'rating_score', 'status', 'is_public', 'created_at', 'executed_at'], true)) {
             return;
         }
 
@@ -62,6 +62,7 @@ class ClaimRatings extends Component
     public function render()
     {
         $ratings = ClaimRating::query()
+            ->with('syntheticUser')
             ->whereNotNull('executed_at')
             ->search($this->search)
             ->when($this->status !== '', fn ($query) => $query->where('status', $this->status))
@@ -77,6 +78,8 @@ class ClaimRatings extends Component
 
     protected function ratingDetailQuery(): Builder
     {
-        return ClaimRating::query()->whereNotNull('executed_at');
+        return ClaimRating::query()
+            ->with('syntheticUser')
+            ->whereNotNull('executed_at');
     }
 }

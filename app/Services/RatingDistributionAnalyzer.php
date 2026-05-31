@@ -6,6 +6,7 @@ use App\Models\Setting;
 use App\Support\Rating\RatingDistributionCatalog;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class RatingDistributionAnalyzer
 {
@@ -25,6 +26,7 @@ class RatingDistributionAnalyzer
             $hourWeights = $this->calculateHourWeights($hourStats);
             $scoreStats = $this->getScoreStatistics();
             $scoreWeights = $this->calculateScoreWeights($scoreStats['buckets'] ?? []);
+            $userStats = $this->getUserStatistics();
             
             if (empty($subtypeStats)) {
                 Log::warning('No published ratings found for analysis');
@@ -35,6 +37,7 @@ class RatingDistributionAnalyzer
                     'hour_stats' => $hourStats,
                     'score_weights' => $scoreWeights,
                     'score_stats' => $scoreStats,
+                    'user_stats' => $userStats,
                     'stats' => [],
                     'timestamp' => now(),
                     'total_ratings_analyzed' => 0,
@@ -54,6 +57,7 @@ class RatingDistributionAnalyzer
                 'hour_stats' => $hourStats,
                 'score_weights' => $scoreWeights,
                 'score_stats' => $scoreStats,
+                'user_stats' => $userStats,
                 'stats' => $subtypeStats,
                 'timestamp' => now(),
                 'total_ratings_analyzed' => array_sum(
@@ -98,6 +102,7 @@ class RatingDistributionAnalyzer
                 'hour_stats' => $analysis['hour_stats'] ?? [],
                 'score_weights' => $analysis['score_weights'] ?? [],
                 'score_stats' => $analysis['score_stats'] ?? [],
+                'user_stats' => $analysis['user_stats'] ?? [],
                 'stats' => $analysis['stats'],
                 'analyzed_at' => $analysis['timestamp']->toIso8601String(),
                 'total_ratings' => $analysis['total_ratings_analyzed'],
@@ -370,6 +375,121 @@ class RatingDistributionAnalyzer
     }
 
     /**
+     * Ermittelt aggregierte Benutzer-Muster echter Bewertungen ohne einzelne Personen
+     * oder vollstaendige E-Mail-Adressen zu speichern.
+     *
+     * @return array<string, mixed>
+     */
+    private function getUserStatistics(): array
+    {
+        $connection = $this->analyticsConnection();
+
+        if (! Schema::connection($connection)->hasTable('users')) {
+            return [
+                'available' => false,
+                'reason' => 'Die Base-Datenbank enthaelt keine users-Tabelle.',
+                'source' => $this->userAnalysisSource(),
+            ];
+        }
+
+        $select = [
+            'ratings.id as rating_id',
+            'ratings.user_id',
+        ];
+
+        foreach (['email', 'email_verified_at', 'role', 'status', 'created_at'] as $column) {
+            $select[] = Schema::connection($connection)->hasColumn('users', $column)
+                ? "users.{$column}"
+                : DB::raw("NULL as {$column}");
+        }
+
+        $rows = DB::connection($connection)
+            ->table('claim_ratings as ratings')
+            ->leftJoin('users', 'users.id', '=', 'ratings.user_id')
+            ->whereIn('ratings.status', [
+                'rated',
+                'approved',
+                'published',
+            ])
+            ->where('ratings.is_public', true)
+            ->select($select)
+            ->get();
+
+        $total = $rows->count();
+        $withUser = $rows->filter(fn (object $row): bool => $row->user_id !== null)->count();
+        $withoutUser = max(0, $total - $withUser);
+        $uniqueUsers = $rows
+            ->pluck('user_id')
+            ->filter()
+            ->unique()
+            ->count();
+
+        $withEmail = $rows->filter(fn (object $row): bool => is_string($row->email ?? null) && trim((string) $row->email) !== '');
+        $verifiedEmail = $rows->filter(fn (object $row): bool => ! empty($row->email_verified_at))->count();
+
+        $domains = $withEmail
+            ->map(fn (object $row): ?string => $this->emailDomain($row->email ?? null))
+            ->filter()
+            ->countBy()
+            ->sortDesc()
+            ->take(10)
+            ->map(fn (int $count, string $domain): array => [
+                'domain' => $domain,
+                'count' => $count,
+                'percent' => $withEmail->count() > 0 ? round(($count / $withEmail->count()) * 100, 2) : 0.0,
+            ])
+            ->values()
+            ->all();
+
+        $roles = $rows
+            ->map(fn (object $row): string => filled($row->role ?? null) ? (string) $row->role : 'ohne Rolle')
+            ->countBy()
+            ->sortDesc()
+            ->map(fn (int $count, string $role): array => [
+                'role' => $role,
+                'count' => $count,
+                'percent' => $total > 0 ? round(($count / $total) * 100, 2) : 0.0,
+            ])
+            ->values()
+            ->all();
+
+        $statuses = $rows
+            ->map(function (object $row): string {
+                if ($row->status === null) {
+                    return 'unbekannt';
+                }
+
+                return filter_var($row->status, FILTER_VALIDATE_BOOLEAN) ? 'aktiv' : 'inaktiv';
+            })
+            ->countBy()
+            ->sortDesc()
+            ->map(fn (int $count, string $status): array => [
+                'status' => $status,
+                'count' => $count,
+                'percent' => $total > 0 ? round(($count / $total) * 100, 2) : 0.0,
+            ])
+            ->values()
+            ->all();
+
+        return [
+            'available' => true,
+            'source' => $this->userAnalysisSource(),
+            'total_ratings' => $total,
+            'ratings_with_user' => $withUser,
+            'ratings_without_user' => $withoutUser,
+            'ratings_with_user_percent' => $total > 0 ? round(($withUser / $total) * 100, 2) : 0.0,
+            'unique_users' => $uniqueUsers,
+            'ratings_with_email' => $withEmail->count(),
+            'verified_email_count' => $verifiedEmail,
+            'verified_email_percent' => $withUser > 0 ? round(($verifiedEmail / $withUser) * 100, 2) : 0.0,
+            'email_domains' => $domains,
+            'roles' => $roles,
+            'statuses' => $statuses,
+            'privacy_note' => 'Es werden nur Domains und Zaehler gespeichert, keine echten E-Mail-Adressen oder Namen.',
+        ];
+    }
+
+    /**
      * @param array<string, array{count?: int}> $scoreStats
      * @return array<string, float>
      */
@@ -449,6 +569,7 @@ class RatingDistributionAnalyzer
         $hourWeights = is_array($analysis['hour_weights'] ?? null) ? $analysis['hour_weights'] : [];
         $scoreStats = is_array($analysis['score_stats'] ?? null) ? $analysis['score_stats'] : [];
         $scoreWeights = is_array($analysis['score_weights'] ?? null) ? $analysis['score_weights'] : [];
+        $userStats = is_array($analysis['user_stats'] ?? null) ? $analysis['user_stats'] : [];
 
         $scheduledHourStats = $scheduledHour !== null
             ? $this->valueByKey($hourStats, $scheduledHour, null)
@@ -480,6 +601,15 @@ class RatingDistributionAnalyzer
                 'stats' => $scoreStats,
                 'weights' => $this->mergeScoreWeights($scoreWeights),
                 'selected_pair_average' => isset($subtypeStats['avg_score']) ? round((float) $subtypeStats['avg_score'], 2) : null,
+            ],
+            'user_patterns' => [
+                'available' => (bool) ($userStats['available'] ?? false),
+                'source' => $userStats['source'] ?? [],
+                'ratings_with_user_percent' => $userStats['ratings_with_user_percent'] ?? null,
+                'verified_email_percent' => $userStats['verified_email_percent'] ?? null,
+                'top_email_domains' => array_slice($userStats['email_domains'] ?? [], 0, 5),
+                'roles' => $userStats['roles'] ?? [],
+                'privacy_note' => 'Nur aggregierte Benutzer-Muster verwenden, keine echten Namen oder E-Mail-Adressen uebernehmen.',
             ],
             'instructions' => [
                 'Nutze nur diese aggregierten Muster, keine echten Einzelfaelle.',
@@ -624,6 +754,33 @@ class RatingDistributionAnalyzer
         }
 
         return null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function userAnalysisSource(): array
+    {
+        $databaseSettings = Setting::getValue('database', 'config');
+        $databaseSettings = is_array($databaseSettings) ? $databaseSettings : [];
+
+        return [
+            'base_database' => (string) ($databaseSettings['database'] ?? env('ANALYTICS_DB_DATABASE', 'regulierungs-check')),
+            'rating_user_link' => 'claim_ratings.user_id -> users.id',
+            'email_pattern' => 'Nur Domain aus users.email, keine vollstaendige Adresse.',
+            'visibility_filter' => 'claim_ratings.is_public = true und Status rated/approved/published',
+        ];
+    }
+
+    private function emailDomain(mixed $email): ?string
+    {
+        if (! is_string($email) || ! str_contains($email, '@')) {
+            return null;
+        }
+
+        $domain = strtolower(trim(substr(strrchr($email, '@') ?: '', 1)));
+
+        return $domain !== '' ? $domain : null;
     }
 
     /**

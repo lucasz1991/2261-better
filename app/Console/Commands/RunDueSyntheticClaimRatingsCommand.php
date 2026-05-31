@@ -37,10 +37,11 @@ class RunDueSyntheticClaimRatingsCommand extends Command
         if (! empty($report['dispatched'])) {
             $this->info('Verarbeitete Bewertungen');
             $this->table(
-                ['ID', 'Base-ID', 'Aktion', 'Geplant fuer', 'Typ', 'Untertyp', 'Versicherung', 'Fehler'],
+                ['ID', 'Base-ID', 'Base-User', 'Aktion', 'Geplant fuer', 'Typ', 'Untertyp', 'Versicherung', 'Fehler'],
                 collect($report['dispatched'])->map(fn (array $item): array => [
                     '#' . ($item['id'] ?? '-'),
                     isset($item['base_claim_rating_id']) && $item['base_claim_rating_id'] ? '#' . $item['base_claim_rating_id'] : '-',
+                    isset($item['base_user_id']) && $item['base_user_id'] ? '#' . $item['base_user_id'] : '-',
                     match ($item['action'] ?? '') {
                         'prepared_marked_executed' => 'vorbereitete Bewertung ausgefuehrt',
                         'generated_and_executed' => 'AI generiert und ausgefuehrt',

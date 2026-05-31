@@ -21,7 +21,7 @@
                 id="rating-search"
                 type="search"
                 wire:model.live.debounce.300ms="search"
-                placeholder="ID, Base-ID, Versicherungs-ID, Status oder Kommentar"
+                placeholder="ID, Base-ID, Base-User, Versicherungs-ID, Status oder Kommentar"
                 class="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
             >
         </div>
@@ -51,6 +51,9 @@
                         </th>
                         <th class="px-4 py-3">
                             <button type="button" wire:click="sortBy('base_claim_rating_id')" class="font-semibold">Base-ID</button>
+                        </th>
+                        <th class="px-4 py-3">
+                            <button type="button" wire:click="sortBy('base_user_id')" class="font-semibold">Base-User</button>
                         </th>
                         <th class="px-4 py-3">Versicherung</th>
                         <th class="px-4 py-3">
@@ -84,9 +87,20 @@
                                 {{ $rating->base_claim_rating_id ? '#' . $rating->base_claim_rating_id : '-' }}
                             </td>
                             <td class="whitespace-nowrap px-4 py-3 text-slate-700">
-                                <div>Versicherung: {{ $rating->insurance_id ?? '-' }}</div>
+                                @if($rating->base_user_id)
+                                    <span class="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
+                                        #{{ $rating->base_user_id }}
+                                    </span>
+                                @else
+                                    <span class="text-slate-400">-</span>
+                                @endif
+                            </td>
+                            <td class="whitespace-nowrap px-4 py-3 text-slate-700">
+                                <div>{{ data_get($rating->data, 'base_context.insurance.name') ?: 'Versicherung: ' . ($rating->insurance_id ?? '-') }}</div>
                                 <div class="text-xs text-slate-500">
-                                    Typ: {{ $rating->insurance_type_id ?? '-' }} / Untertyp: {{ $rating->insurance_subtype_id ?? '-' }}
+                                    {{ data_get($rating->data, 'base_context.insurance_type.name') ?: 'Typ: ' . ($rating->insurance_type_id ?? '-') }}
+                                    /
+                                    {{ data_get($rating->data, 'base_context.insurance_subtype.name') ?: 'Untertyp: ' . ($rating->insurance_subtype_id ?? '-') }}
                                 </div>
                             </td>
                             <td class="whitespace-nowrap px-4 py-3 text-slate-700">
@@ -110,7 +124,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="7" class="px-4 py-10 text-center text-sm text-slate-500">
+                            <td colspan="8" class="px-4 py-10 text-center text-sm text-slate-500">
                                 Noch keine ausgefuehrten Bewertungen gespeichert.
                             </td>
                         </tr>

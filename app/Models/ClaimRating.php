@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class ClaimRating extends Model
@@ -24,6 +25,8 @@ class ClaimRating extends Model
 
     protected $fillable = [
         'base_claim_rating_id',
+        'base_user_id',
+        'synthetic_rating_user_id',
         'user_id',
         'insurance_subtype_id',
         'insurance_type_id',
@@ -53,6 +56,8 @@ class ClaimRating extends Model
         'admin_review' => 'array',
         'data' => 'array',
         'is_public' => 'boolean',
+        'base_user_id' => 'integer',
+        'synthetic_rating_user_id' => 'integer',
         'rating_score' => 'decimal:2',
         'scheduled_for' => 'datetime',
         'execution_started_at' => 'datetime',
@@ -73,6 +78,11 @@ class ClaimRating extends Model
             self::STATUS_PROCESSING => 'In Ausfuehrung',
             self::STATUS_FAILED => 'Fehlgeschlagen',
         ];
+    }
+
+    public function syntheticUser(): BelongsTo
+    {
+        return $this->belongsTo(SyntheticRatingUser::class, 'synthetic_rating_user_id');
     }
 
     public function getStatusLabelAttribute(): string
@@ -98,10 +108,18 @@ class ClaimRating extends Model
                 $query
                     ->orWhere('id', (int) $search)
                     ->orWhere('base_claim_rating_id', (int) $search)
+                    ->orWhere('base_user_id', (int) $search)
+                    ->orWhere('synthetic_rating_user_id', (int) $search)
                     ->orWhere('insurance_id', (int) $search)
                     ->orWhere('insurance_type_id', (int) $search)
                     ->orWhere('insurance_subtype_id', (int) $search);
             }
+
+            $query->orWhereHas('syntheticUser', function (Builder $query) use ($search): void {
+                $query
+                    ->where('name', 'like', '%' . $search . '%')
+                    ->orWhere('email', 'like', '%' . $search . '%');
+            });
         });
     }
 

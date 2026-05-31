@@ -185,10 +185,35 @@ TEXT;
             'insurance' => $baseContext['insurance'] ?? [],
             'scheduled_for' => optional($this->claimRating->scheduled_for)->toDateTimeString(),
             'target_score_profile' => $this->claimRating->data['planning']['target_score_profile'] ?? null,
+            'synthetic_user_profile' => $this->syntheticUserProfile(),
             'observed_generation_profile' => $generationProfile,
             'questionnaire_snapshot' => $this->variableQuestions($baseContext),
             'allowed_regulation_types' => ['vollzahlung', 'teilzahlung', 'ablehnung', 'austehend'],
         ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function syntheticUserProfile(): ?array
+    {
+        $syntheticUser = $this->claimRating->syntheticUser;
+
+        if ($syntheticUser) {
+            return [
+                'id' => $syntheticUser->id,
+                'base_user_id' => $syntheticUser->base_user_id,
+                'name' => $syntheticUser->name,
+                'email' => $syntheticUser->email,
+                'email_domain' => $syntheticUser->email_domain,
+                'role' => $syntheticUser->role,
+                'status' => $syntheticUser->status,
+            ];
+        }
+
+        $profile = $this->claimRating->data['planning']['synthetic_user_profile'] ?? null;
+
+        return is_array($profile) ? $profile : null;
     }
 
     /**

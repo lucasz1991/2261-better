@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\ClaimRating;
 use App\Models\Setting;
+use App\Models\SyntheticRatingUser;
 use App\Support\Database\RegCheckDatabase;
 use App\Support\Rating\RatingDistributionCatalog;
 use Carbon\CarbonImmutable;
@@ -137,8 +138,20 @@ class PlanSyntheticClaimRatings implements ShouldQueue
 
             $scheduledFor = $this->scheduledTime($targetDate, $settings['hour_weights'] ?? []);
             $targetScoreProfile = $this->targetScoreProfile($settings['score_weights'] ?? []);
+            $syntheticUser = $this->createSyntheticUser();
+            $syntheticUserProfile = $syntheticUser->only([
+                'id',
+                'base_user_id',
+                'name',
+                'email',
+                'email_domain',
+                'role',
+                'status',
+                'email_verified_at',
+            ]);
 
             $claimRating = ClaimRating::create([
+                'synthetic_rating_user_id' => $syntheticUser->id,
                 'insurance_type_id' => $typeId,
                 'insurance_subtype_id' => $subtypeId,
                 'insurance_id' => $baseContext['insurance']['id'],
@@ -164,6 +177,7 @@ class PlanSyntheticClaimRatings implements ShouldQueue
                         'planned_for' => $scheduledFor->toDateTimeString(),
                         'planned_by' => self::class,
                         'target_score_profile' => $targetScoreProfile,
+                        'synthetic_user_profile' => $syntheticUserProfile,
                     ],
                     'base_context' => $baseContext,
                 ],
@@ -181,6 +195,8 @@ class PlanSyntheticClaimRatings implements ShouldQueue
                 'insurance_name' => $baseContext['insurance']['name'] ?? null,
                 'questionnaire_version_id' => $baseContext['questionnaire_version']['id'] ?? null,
                 'target_score_label' => $targetScoreProfile['label'] ?? null,
+                'synthetic_rating_user_id' => $syntheticUser->id,
+                'synthetic_user_email' => $syntheticUserProfile['email'] ?? null,
             ];
         }
 
@@ -388,6 +404,30 @@ class PlanSyntheticClaimRatings implements ShouldQueue
             'max_score' => $max,
             'target_score' => round($target, 2),
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function createSyntheticUser(): SyntheticRatingUser
+    {
+        $token = strtolower((string) Str::random(12));
+
+        return SyntheticRatingUser::create([
+            'base_user_id' => null,
+            'name' => 'Interner Testnutzer 2261',
+            'email' => "synthetic-2261-{$token}@example.invalid",
+            'email_domain' => 'example.invalid',
+            'role' => 'guest',
+            'status' => false,
+            'email_verified_at' => null,
+            'data' => [
+                'synthetic' => true,
+                'do_not_publish' => true,
+                'source_app' => '2261-better',
+                'created_by' => self::class,
+            ],
+        ]);
     }
 
     /**

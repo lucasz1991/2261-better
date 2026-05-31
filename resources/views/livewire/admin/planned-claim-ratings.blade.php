@@ -89,7 +89,7 @@
                         id="planned-rating-search"
                         type="search"
                         wire:model.live.debounce.300ms="search"
-                        placeholder="ID, Base-ID, Versicherung, Status oder Fehler"
+                        placeholder="ID, Base-ID, Base-User, Versicherung, Status oder Fehler"
                         class="block w-full rounded-md border border-slate-300 py-2 pl-10 pr-3 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
                     >
                 </div>
@@ -186,6 +186,8 @@
                             $timeLabel = $rating->executed_at ? 'Ausgefuehrt' : 'Geplant';
                             $score = $rating->rating_score !== null ? (float) $rating->rating_score : null;
                             $targetScoreProfile = data_get($rating->data, 'planning.target_score_profile');
+                            $syntheticUser = $rating->syntheticUser;
+                            $baseUserId = $syntheticUser?->base_user_id ?: $rating->base_user_id;
                         @endphp
                         <tr
                             wire:key="planned-claim-rating-{{ $rating->id }}"
@@ -249,17 +251,35 @@
                                 <div class="mt-2 text-xs text-slate-500">{{ $rating->status_label }}</div>
                             </td>
                             <td class="whitespace-nowrap px-4 py-4 align-top">
-                                @if($rating->base_claim_rating_id)
-                                    <div class="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                                        <i class="fal fa-database"></i>
-                                        #{{ $rating->base_claim_rating_id }}
-                                    </div>
-                                @else
-                                    <div class="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-500">
-                                        <i class="fal fa-database"></i>
-                                        Offen
-                                    </div>
-                                @endif
+                                <div class="space-y-1.5">
+                                    @if($rating->base_claim_rating_id)
+                                        <div class="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                                            <i class="fal fa-database"></i>
+                                            Bewertung #{{ $rating->base_claim_rating_id }}
+                                        </div>
+                                    @else
+                                        <div class="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-500">
+                                            <i class="fal fa-database"></i>
+                                            Bewertung offen
+                                        </div>
+                                    @endif
+
+                                    @if($syntheticUser)
+                                        <div class="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
+                                            <i class="fal fa-user"></i>
+                                            Lokal #{{ $syntheticUser->id }}
+                                        </div>
+                                    @endif
+
+                                    @if($baseUserId)
+                                        <div class="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
+                                            <i class="fal fa-user"></i>
+                                            Base-User #{{ $baseUserId }}
+                                        </div>
+                                    @else
+                                        <div class="text-xs text-slate-400">Base-User noch nicht angelegt</div>
+                                    @endif
+                                </div>
                             </td>
                             <td class="whitespace-nowrap px-4 py-4 align-top text-slate-700">
                                 <span class="inline-flex h-7 min-w-7 items-center justify-center rounded-md bg-slate-100 px-2 text-xs font-semibold text-slate-700">
