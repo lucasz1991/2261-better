@@ -434,7 +434,7 @@ class SyntheticRatingUser extends Model
 
         $token = substr(preg_replace('/[^a-z0-9]/', '', strtolower($token)) ?: Str::random(8), 0, 8);
 
-        return "synthetic-2261-{$namePart}-{$token}@{$domain}";
+        return "{$namePart}-{$token}@{$domain}";
     }
 
     private static function usernameFromPersona(array $persona, string $token): string
