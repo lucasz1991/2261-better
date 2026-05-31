@@ -26,6 +26,12 @@ class AdminConfig extends Component
     /** @var array<string, float|int|string|null> */
     public array $scoreWeights = [];
 
+    /** @var array<int|string, float|int|string|null> */
+    public array $providerWeights = [];
+
+    /** @var array<int, array{id: int, name: string}> */
+    public array $providerCatalog = [];
+
     public string $syntheticUserNameMode = 'realistic';
 
     public string $openrouterApiUrl = 'https://openrouter.ai/api/v1/chat/completions';
@@ -65,7 +71,6 @@ class AdminConfig extends Component
         $this->typeWeights = $this->mergeTypeWeights($ratingSettings['type_weights'] ?? []);
         $this->subtypeWeights = $this->mergeSubtypeWeights($ratingSettings['subtype_weights'] ?? []);
         $this->hourWeights = $this->mergeHourWeights($ratingSettings['hour_weights'] ?? []);
-        $this->scoreWeights = $this->mergeScoreWeights($ratingSettings['score_weights'] ?? []);
         $this->syntheticUserNameMode = 'realistic';
 
         $openrouterSettings = Setting::getValue('openrouter', 'config') ?? [];
@@ -84,6 +89,9 @@ class AdminConfig extends Component
         $this->dbDatabase = (string) ($dbSettings['database'] ?? env('ANALYTICS_DB_DATABASE', 'regulierungs-check'));
         $this->dbUsername = (string) ($dbSettings['username'] ?? env('ANALYTICS_DB_USERNAME', env('DB_USERNAME', 'root')));
         $this->dbPassword = (string) ($dbSettings['password'] ?? env('ANALYTICS_DB_PASSWORD', ''));
+        $this->scoreWeights = $this->mergeScoreWeights($ratingSettings['score_weights'] ?? []);
+        $this->providerCatalog = $this->loadProviderCatalog();
+        $this->providerWeights = $this->mergeProviderWeights($ratingSettings['provider_weights'] ?? []);
 
         $formFillSettings = Setting::getValue('form_filling', 'config') ?? [];
         $formFillSettings = is_array($formFillSettings) ? $formFillSettings : [];
@@ -212,6 +220,7 @@ class AdminConfig extends Component
         $this->subtypeWeights = RatingDistributionCatalog::defaultSubtypeWeights();
         $this->hourWeights = RatingDistributionCatalog::defaultHourWeights();
         $this->scoreWeights = RatingDistributionCatalog::defaultScoreWeights();
+        $this->providerWeights = $this->equalProviderWeights();
     }
 
     public function getTypeWeightTotalProperty(): float
@@ -238,6 +247,11 @@ class AdminConfig extends Component
     public function getScoreWeightTotalProperty(): float
     {
         return array_sum($this->scoreNumericWeights($this->scoreWeights));
+    }
+
+    public function getProviderWeightTotalProperty(): float
+    {
+        return array_sum($this->numericWeights($this->providerWeights));
     }
 
     public function getPeakHoursProperty(): string
@@ -317,6 +331,7 @@ class AdminConfig extends Component
             'subtypeWeights.*.*' => ['nullable', 'numeric', 'min:0', 'max:10000'],
             'hourWeights.*' => ['nullable', 'numeric', 'min:0', 'max:10000'],
             'scoreWeights.*' => ['nullable', 'numeric', 'min:0', 'max:10000'],
+            'providerWeights.*' => ['nullable', 'numeric', 'min:0', 'max:10000'],
             'openrouterApiUrl' => ['required', 'url'],
             'openrouterApiKey' => ['nullable', 'string'],
             'openrouterModel' => ['required', 'string', 'min:1'],
@@ -345,6 +360,7 @@ class AdminConfig extends Component
             'subtypeWeights.*.*' => ['nullable', 'numeric', 'min:0', 'max:10000'],
             'hourWeights.*' => ['nullable', 'numeric', 'min:0', 'max:10000'],
             'scoreWeights.*' => ['nullable', 'numeric', 'min:0', 'max:10000'],
+            'providerWeights.*' => ['nullable', 'numeric', 'min:0', 'max:10000'],
         ]);
     }
 
@@ -391,6 +407,7 @@ class AdminConfig extends Component
             'subtype_weights' => $this->nestedNumericWeights($this->subtypeWeights),
             'hour_weights' => $this->numericWeights($this->hourWeights),
             'score_weights' => $this->scoreNumericWeights($this->scoreWeights),
+            'provider_weights' => $this->numericWeights($this->providerWeights),
             'synthetic_user_name_mode' => 'realistic',
         ]);
     }
@@ -529,6 +546,62 @@ class AdminConfig extends Component
         }
 
         return $weights;
+    }
+
+    /**
+     * @param array<int|string, mixed> $storedWeights
+     * @return array<int, float>
+     */
+    private function mergeProviderWeights(array $storedWeights): array
+    {
+        $weights = $this->equalProviderWeights();
+
+        foreach ($weights as $providerId => $default) {
+            $weights[$providerId] = $this->toWeight($storedWeights[$providerId] ?? $storedWeights[(string) $providerId] ?? $default);
+        }
+
+        return $weights;
+    }
+
+    /**
+     * @return array<int, float>
+     */
+    private function equalProviderWeights(): array
+    {
+        $weights = [];
+
+        foreach ($this->providerCatalog as $provider) {
+            $weights[(int) $provider['id']] = 1.0;
+        }
+
+        return $weights;
+    }
+
+    /**
+     * @return array<int, array{id: int, name: string}>
+     */
+    private function loadProviderCatalog(): array
+    {
+        try {
+            $connection = $this->configureAnalyticsConnection();
+
+            return DB::connection($connection)
+                ->table('insurances')
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn (object $row): array => [
+                    'id' => (int) $row->id,
+                    'name' => (string) $row->name,
+                ])
+                ->all();
+        } catch (\Throwable $exception) {
+            Log::warning('Could not load provider catalog for rating settings.', [
+                'message' => $exception->getMessage(),
+            ]);
+
+            return [];
+        }
     }
 
     /**

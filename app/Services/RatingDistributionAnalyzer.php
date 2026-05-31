@@ -134,6 +134,7 @@ class RatingDistributionAnalyzer
             'subtype_weights' => $this->mergeSubtypeWeights($analysis['subtype_weights'] ?? []),
             'hour_weights' => $this->mergeHourWeights($analysis['hour_weights'] ?? []),
             'score_weights' => $this->mergeScoreWeights($analysis['score_weights'] ?? []),
+            'provider_weights' => $currentSettings['provider_weights'] ?? [],
             'synthetic_user_name_mode' => 'realistic',
         ]);
     }

@@ -126,6 +126,15 @@
                     </button>
                     <button
                         type="button"
+                        @click="ratingSection = 'providers'"
+                        :class="ratingSection === 'providers' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'"
+                        class="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm font-medium transition-colors"
+                    >
+                        <span>Anbieter</span>
+                        <span class="text-xs opacity-75">{{ count($providerCatalog) }}</span>
+                    </button>
+                    <button
+                        type="button"
                         @click="ratingSection = 'types'"
                         :class="ratingSection === 'types' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'"
                         class="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm font-medium transition-colors"
@@ -143,7 +152,7 @@
 
             <main class="min-w-0 space-y-5">
                 <section x-show.important="ratingSection === 'overview'" class="space-y-5">
-                    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+                    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-7">
                         <div class="rounded-lg border border-slate-200 bg-white p-4">
                             <div class="text-xs font-medium uppercase tracking-wide text-slate-500">Tagesziel</div>
                             <div class="mt-2 text-2xl font-semibold text-slate-900">{{ $dailyTarget }}</div>
@@ -163,6 +172,10 @@
                         <div class="rounded-lg border border-slate-200 bg-white p-4">
                             <div class="text-xs font-medium uppercase tracking-wide text-slate-500">Score-Mix</div>
                             <div class="mt-2 text-2xl font-semibold text-slate-900">{{ number_format($this->scoreWeightTotal, 1, ',', '.') }}</div>
+                        </div>
+                        <div class="rounded-lg border border-slate-200 bg-white p-4">
+                            <div class="text-xs font-medium uppercase tracking-wide text-slate-500">Anbieter-Mix</div>
+                            <div class="mt-2 text-2xl font-semibold text-slate-900">{{ number_format($this->providerWeightTotal, 1, ',', '.') }}</div>
                         </div>
                         <div class="rounded-lg border border-slate-200 bg-white p-4">
                             <div class="text-xs font-medium uppercase tracking-wide text-slate-500">Benutzer-Muster</div>
@@ -265,48 +278,72 @@
                         </div>
                     </div>
 
-                    <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white p-4">
-                        <div class="flex min-w-[960px] items-end gap-2">
+                    <div class="rounded-lg border border-slate-200 bg-white p-4">
+                        <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                             @foreach($hourWeights as $hour => $weight)
                                 @php($hourStats = $lastAnalysis['hour_stats'][$hour] ?? $lastAnalysis['hour_stats'][(string) $hour] ?? null)
-                                <div x-data="{ weight: @js((float) $weight) }" class="flex w-9 flex-col items-center gap-2">
-                                    <div class="flex h-40 w-full items-end rounded-md bg-slate-100 p-1">
-                                        <div
-                                            class="w-full rounded-sm bg-blue-500 transition-all"
-                                            :style="'height: ' + Math.max(4, Math.min(100, Number(weight) || 0)) + '%'"
-                                        ></div>
+                                <div
+                                    x-data="{
+                                        weight: @js((float) $weight),
+                                        setWeight(value) {
+                                            this.weight = Math.max(0, Math.min(10000, Number(value) || 0));
+                                            $wire.set('hourWeights.{{ $hour }}', this.weight);
+                                        }
+                                    }"
+                                    class="rounded-md border border-slate-200 bg-slate-50 p-3"
+                                >
+                                    <div class="flex items-start justify-between gap-3">
+                                        <div>
+                                            <div class="text-sm font-semibold text-slate-900">{{ str_pad((string) $hour, 2, '0', STR_PAD_LEFT) }}:00</div>
+                                            <div class="mt-0.5 text-xs text-slate-500">
+                                                @if($hourStats)
+                                                    Echt: {{ $hourStats['count'] ?? 0 }} / {{ number_format((float) ($hourStats['percent'] ?? 0), 1, ',', '.') }}%
+                                                @else
+                                                    Keine Analysewerte
+                                                @endif
+                                            </div>
+                                        </div>
+                                        <div class="rounded-md border border-slate-200 bg-white px-2 py-1 text-right">
+                                            <div class="text-[10px] font-semibold uppercase text-slate-400">Gewicht</div>
+                                            <div class="text-sm font-semibold text-slate-900" x-text="Number(weight).toFixed(1).replace('.', ',')"></div>
+                                        </div>
                                     </div>
 
-                                    <input
-                                        type="range"
-                                        min="0"
-                                        max="100"
-                                        step="1"
-                                        x-model.number="weight"
-                                        wire:model.live.debounce.250ms="hourWeights.{{ $hour }}"
-                                        class="h-20 w-6 accent-blue-600"
-                                        style="writing-mode: vertical-lr; direction: rtl;"
-                                        aria-label="Gewicht {{ str_pad((string) $hour, 2, '0', STR_PAD_LEFT) }} Uhr"
-                                    >
+                                    <div class="mt-3 h-2 overflow-hidden rounded-full bg-white">
+                                        <div class="h-full rounded-full bg-blue-500 transition-all" :style="'width: ' + Math.max(2, Math.min(100, Number(weight) || 0)) + '%'"></div>
+                                    </div>
 
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        max="100"
-                                        step="0.1"
-                                        x-model.number="weight"
-                                        wire:model.live.debounce.300ms="hourWeights.{{ $hour }}"
-                                        class="w-14 rounded-md border border-slate-300 px-1.5 py-1 text-center text-xs shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                                    >
+                                    <div class="mt-3 flex items-center gap-2">
+                                        <button type="button" @click="setWeight(weight - 5)" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-600 hover:bg-slate-100" aria-label="Gewicht reduzieren">
+                                            <i class="fal fa-minus text-xs"></i>
+                                        </button>
+                                        <input
+                                            type="range"
+                                            min="0"
+                                            max="100"
+                                            step="1"
+                                            x-model.number="weight"
+                                            @input.debounce.250ms="$wire.set('hourWeights.{{ $hour }}', Number(weight) || 0)"
+                                            class="min-w-0 flex-1 accent-blue-600"
+                                            aria-label="Gewicht {{ str_pad((string) $hour, 2, '0', STR_PAD_LEFT) }} Uhr"
+                                        >
+                                        <button type="button" @click="setWeight(weight + 5)" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-600 hover:bg-slate-100" aria-label="Gewicht erhoehen">
+                                            <i class="fal fa-plus text-xs"></i>
+                                        </button>
+                                    </div>
 
-                                    <div class="text-[11px] font-medium text-slate-700">{{ str_pad((string) $hour, 2, '0', STR_PAD_LEFT) }}</div>
-
-                                    @if($hourStats)
-                                        <div class="text-center text-[10px] leading-tight text-slate-500">
-                                            {{ $hourStats['count'] ?? 0 }}<br>
-                                            {{ number_format((float) ($hourStats['percent'] ?? 0), 1, ',', '.') }}%
-                                        </div>
-                                    @endif
+                                    <div class="mt-3 flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2 py-1.5">
+                                        <span class="text-xs font-medium text-slate-500">Exakt</span>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            max="10000"
+                                            step="0.1"
+                                            x-model.number="weight"
+                                            @change="setWeight(weight)"
+                                            class="block w-full border-0 bg-transparent p-0 text-right text-sm font-semibold text-slate-900 focus:ring-0"
+                                        >
+                                    </div>
                                 </div>
                             @endforeach
                         </div>
@@ -517,6 +554,88 @@
                     @endif
                 </section>
 
+                <section x-cloak x-show.important="ratingSection === 'providers'" style="display: none;" class="space-y-5">
+                    <div class="rounded-lg border border-slate-200 bg-white p-4">
+                        <div class="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                            <div>
+                                <h2 class="font-semibold text-slate-900">Anbieter-Verteilung</h2>
+                                <p class="mt-1 text-sm text-slate-500">Diese Gewichte steuern, bei welchem Anbieter neue geplante Bewertungen landen. Analyseergebnisse ueberschreiben diese Werte nicht.</p>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-3">
+                                <div class="text-sm text-slate-600">
+                                    Summe: <span class="font-semibold text-slate-900">{{ number_format($this->providerWeightTotal, 1, ',', '.') }}</span>
+                                </div>
+                                <button type="button" wire:click="saveRatingSettings" class="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-500">
+                                    Anbieter speichern
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    @if(count($providerCatalog) === 0)
+                        <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                            Keine aktiven Anbieter aus der RegulierungsCheck-Datenbank geladen. Bitte Datenbankverbindung pruefen.
+                        </div>
+                    @else
+                        <div class="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                            <div class="divide-y divide-slate-100">
+                                @foreach($providerCatalog as $provider)
+                                    @php($providerWeight = (float) ($providerWeights[$provider['id']] ?? 1))
+                                    <div
+                                        x-data="{
+                                            weight: @js($providerWeight),
+                                            setWeight(value) {
+                                                this.weight = Math.max(0, Math.min(10000, Number(value) || 0));
+                                                $wire.set('providerWeights.{{ $provider['id'] }}', this.weight);
+                                            }
+                                        }"
+                                        class="grid gap-4 px-4 py-4 xl:grid-cols-[minmax(0,1fr)_360px]"
+                                    >
+                                        <div class="min-w-0">
+                                            <div class="truncate text-sm font-semibold text-slate-900">#{{ $provider['id'] }} {{ $provider['name'] }}</div>
+                                            <div class="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-100">
+                                                <div class="h-full rounded-full bg-blue-500" :style="'width: ' + Math.max(2, Math.min(100, Number(weight) || 0)) + '%'"></div>
+                                            </div>
+                                        </div>
+                                        <div class="rounded-md border border-slate-200 bg-slate-50 p-2.5">
+                                            <div class="flex items-center gap-2">
+                                                <button type="button" @click="setWeight(weight - 1)" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-600 hover:bg-slate-100" aria-label="Anbieter-Gewicht reduzieren">
+                                                    <i class="fal fa-minus text-xs"></i>
+                                                </button>
+                                                <input
+                                                    type="range"
+                                                    min="0"
+                                                    max="100"
+                                                    step="1"
+                                                    x-model.number="weight"
+                                                    @input.debounce.250ms="$wire.set('providerWeights.{{ $provider['id'] }}', Number(weight) || 0)"
+                                                    class="min-w-0 flex-1 accent-blue-600"
+                                                    aria-label="Anbieter-Gewicht Slider {{ $provider['name'] }}"
+                                                >
+                                                <button type="button" @click="setWeight(weight + 1)" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-600 hover:bg-slate-100" aria-label="Anbieter-Gewicht erhoehen">
+                                                    <i class="fal fa-plus text-xs"></i>
+                                                </button>
+                                                <label class="flex w-24 shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1.5">
+                                                    <span class="sr-only">Anbieter-Gewicht {{ $provider['name'] }}</span>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        max="10000"
+                                                        step="0.1"
+                                                        x-model.number="weight"
+                                                        @change="setWeight(weight)"
+                                                        class="block w-full border-0 bg-transparent p-0 text-right text-sm font-semibold text-slate-900 focus:ring-0"
+                                                    >
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endif
+                </section>
+
                 <section x-cloak x-show.important="ratingSection === 'types'" style="display: none;" class="space-y-5">
                     <div class="rounded-lg border border-slate-200 bg-white p-4">
                         <div class="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
@@ -524,19 +643,28 @@
                                 <h2 class="font-semibold text-slate-900">Verteilung nach Art und Unterart</h2>
                                 <p class="mt-1 text-sm text-slate-500">Gewichte fuer bestehende Arten und Unterarten.</p>
                             </div>
-                            <div class="text-sm text-slate-600">
-                                Gesamt: <span class="font-semibold text-slate-900">{{ number_format($this->typeWeightTotal + $this->subtypeWeightTotal, 1, ',', '.') }}</span>
+                            <div class="flex flex-wrap items-center gap-3">
+                                <div class="text-sm text-slate-600">
+                                    Gesamt: <span class="font-semibold text-slate-900">{{ number_format($this->typeWeightTotal + $this->subtypeWeightTotal, 1, ',', '.') }}</span>
+                                </div>
+                                <button type="button" wire:click="saveRatingSettings" class="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-500">
+                                    Arten speichern
+                                </button>
                             </div>
                         </div>
                     </div>
 
-                    <div class="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-white">
+                    <div class="overflow-hidden rounded-lg border border-slate-200 bg-white">
                         @foreach($catalog as $typeId => $type)
-                            <div class="p-4">
-                                <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_160px] md:items-center">
+                            @php($typeWeight = (float) ($typeWeights[$typeId] ?? 0))
+                            <div x-data="{ typeWeight: @js($typeWeight) }" class="border-b border-slate-100 p-4 last:border-b-0">
+                                <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_170px_260px] md:items-center">
                                     <div>
                                         <div class="font-medium text-slate-900">#{{ $typeId }} {{ $type['name'] }}</div>
                                         <div class="mt-1 text-xs text-slate-500">{{ count($type['subtypes']) }} Unterarten</div>
+                                        <div class="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                                            <div class="h-full rounded-full bg-slate-900" :style="'width: ' + Math.max(2, Math.min(100, Number(typeWeight) || 0)) + '%'"></div>
+                                        </div>
                                     </div>
 
                                     <div>
@@ -546,28 +674,57 @@
                                             type="number"
                                             min="0"
                                             step="0.1"
-                                            wire:model.defer="typeWeights.{{ $typeId }}"
+                                            x-model.number="typeWeight"
+                                            wire:model.live.debounce.300ms="typeWeights.{{ $typeId }}"
                                             class="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
                                         >
                                     </div>
+
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="100"
+                                        step="1"
+                                        x-model.number="typeWeight"
+                                        wire:model.live.debounce.250ms="typeWeights.{{ $typeId }}"
+                                        class="w-full accent-slate-900"
+                                        aria-label="Art-Gewicht {{ $type['name'] }}"
+                                    >
                                 </div>
 
                                 @if(count($type['subtypes']) > 0)
                                     <details class="mt-3">
                                         <summary class="cursor-pointer text-sm font-medium text-blue-700">Unterarten anzeigen</summary>
-                                        <div class="mt-3 grid gap-3 md:grid-cols-2">
+                                        <div class="mt-3 overflow-hidden rounded-md border border-slate-200">
                                             @foreach($type['subtypes'] as $subtypeId => $subtypeName)
-                                                <label for="subtype-weight-{{ $typeId }}-{{ $subtypeId }}" class="grid gap-2 rounded-md border border-slate-100 bg-slate-50 p-3">
-                                                    <span class="text-sm font-medium text-slate-800">#{{ $subtypeId }} {{ $subtypeName }}</span>
+                                                @php($subtypeWeight = (float) ($subtypeWeights[$typeId][$subtypeId] ?? 0))
+                                                <div x-data="{ subtypeWeight: @js($subtypeWeight) }" class="grid gap-3 border-b border-slate-100 bg-slate-50 px-3 py-3 last:border-b-0 md:grid-cols-[minmax(0,1fr)_140px_220px] md:items-center">
+                                                    <div class="min-w-0">
+                                                        <div class="truncate text-sm font-medium text-slate-800">#{{ $subtypeId }} {{ $subtypeName }}</div>
+                                                        <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-white">
+                                                            <div class="h-full rounded-full bg-blue-500" :style="'width: ' + Math.max(2, Math.min(100, Number(subtypeWeight) || 0)) + '%'"></div>
+                                                        </div>
+                                                    </div>
                                                     <input
                                                         id="subtype-weight-{{ $typeId }}-{{ $subtypeId }}"
                                                         type="number"
                                                         min="0"
                                                         step="0.1"
-                                                        wire:model.defer="subtypeWeights.{{ $typeId }}.{{ $subtypeId }}"
+                                                        x-model.number="subtypeWeight"
+                                                        wire:model.live.debounce.300ms="subtypeWeights.{{ $typeId }}.{{ $subtypeId }}"
                                                         class="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
                                                     >
-                                                </label>
+                                                    <input
+                                                        type="range"
+                                                        min="0"
+                                                        max="100"
+                                                        step="1"
+                                                        x-model.number="subtypeWeight"
+                                                        wire:model.live.debounce.250ms="subtypeWeights.{{ $typeId }}.{{ $subtypeId }}"
+                                                        class="w-full accent-blue-600"
+                                                        aria-label="Unterart-Gewicht {{ $subtypeName }}"
+                                                    >
+                                                </div>
                                             @endforeach
                                         </div>
                                     </details>

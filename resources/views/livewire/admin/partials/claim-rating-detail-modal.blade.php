@@ -24,6 +24,99 @@
             @endphp
 
             <div class="max-h-[72vh] space-y-4 overflow-y-auto pr-1 text-slate-700">
+                @if($this->canEditSelectedRating())
+                    <details open class="group rounded-md border border-emerald-200 bg-emerald-50/70">
+                        <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
+                            <div>
+                                <h3 class="text-sm font-semibold text-emerald-950">Geplante Bewertung bearbeiten</h3>
+                                <p class="mt-0.5 text-xs text-emerald-700">Antworten, Bewertungskonfiguration und synthetischer Benutzer sind editierbar, solange noch keine Ausfuehrung/Base-ID existiert.</p>
+                            </div>
+                            <i class="fal fa-chevron-down text-emerald-600 transition group-open:rotate-180"></i>
+                        </summary>
+
+                        <div class="space-y-4 border-t border-emerald-100 px-4 py-4">
+                            <div class="grid gap-3 md:grid-cols-3">
+                                <div>
+                                    <label for="rating-edit-scheduled-for" class="block text-xs font-semibold uppercase tracking-wide text-emerald-800">Ausfuehrungszeit</label>
+                                    <input id="rating-edit-scheduled-for" type="datetime-local" wire:model.defer="editScheduledFor" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500">
+                                </div>
+                                <div>
+                                    <label for="rating-edit-score" class="block text-xs font-semibold uppercase tracking-wide text-emerald-800">Score</label>
+                                    <input id="rating-edit-score" type="number" min="0" max="1" step="0.01" wire:model.defer="editRatingScore" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500">
+                                </div>
+                                <label for="rating-edit-user-status" class="flex items-center gap-2 rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm font-medium text-emerald-950">
+                                    <input id="rating-edit-user-status" type="checkbox" wire:model.defer="editUserStatus" class="rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500">
+                                    Benutzer aktiv
+                                </label>
+                            </div>
+
+                            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                                <div>
+                                    <label for="rating-edit-user-name" class="block text-xs font-semibold uppercase tracking-wide text-emerald-800">Benutzername</label>
+                                    <input id="rating-edit-user-name" type="text" wire:model.defer="editUserName" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500">
+                                </div>
+                                <div>
+                                    <label for="rating-edit-user-first-name" class="block text-xs font-semibold uppercase tracking-wide text-emerald-800">Vorname</label>
+                                    <input id="rating-edit-user-first-name" type="text" wire:model.defer="editUserFirstName" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500">
+                                </div>
+                                <div>
+                                    <label for="rating-edit-user-last-name" class="block text-xs font-semibold uppercase tracking-wide text-emerald-800">Nachname</label>
+                                    <input id="rating-edit-user-last-name" type="text" wire:model.defer="editUserLastName" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500">
+                                </div>
+                                <div>
+                                    <label for="rating-edit-user-username" class="block text-xs font-semibold uppercase tracking-wide text-emerald-800">Username</label>
+                                    <input id="rating-edit-user-username" type="text" wire:model.defer="editUserUsername" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500">
+                                </div>
+                                <div>
+                                    <label for="rating-edit-user-email-verified" class="block text-xs font-semibold uppercase tracking-wide text-emerald-800">E-Mail verifiziert</label>
+                                    <input id="rating-edit-user-email-verified" type="datetime-local" wire:model.defer="editUserEmailVerifiedAt" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500">
+                                </div>
+                            </div>
+
+                            <div>
+                                <label for="rating-edit-user-email" class="block text-xs font-semibold uppercase tracking-wide text-emerald-800">E-Mail</label>
+                                <input id="rating-edit-user-email" type="email" wire:model.defer="editUserEmail" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500">
+                            </div>
+
+                            <div class="grid gap-3 xl:grid-cols-2">
+                                <label class="block">
+                                    <span class="text-xs font-semibold uppercase tracking-wide text-emerald-800">Antworten JSON</span>
+                                    <textarea wire:model.defer="editAnswersJson" rows="12" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 font-mono text-xs shadow-sm focus:border-emerald-500 focus:ring-emerald-500"></textarea>
+                                </label>
+                                <label class="block">
+                                    <span class="text-xs font-semibold uppercase tracking-wide text-emerald-800">Bewertungsdaten JSON</span>
+                                    <textarea wire:model.defer="editDataJson" rows="12" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 font-mono text-xs shadow-sm focus:border-emerald-500 focus:ring-emerald-500"></textarea>
+                                </label>
+                                <label class="block">
+                                    <span class="text-xs font-semibold uppercase tracking-wide text-emerald-800">Attachments JSON</span>
+                                    <textarea wire:model.defer="editAttachmentsJson" rows="10" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 font-mono text-xs shadow-sm focus:border-emerald-500 focus:ring-emerald-500"></textarea>
+                                </label>
+                                <label class="block">
+                                    <span class="text-xs font-semibold uppercase tracking-wide text-emerald-800">Benutzer-Daten JSON</span>
+                                    <textarea wire:model.defer="editUserDataJson" rows="10" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 font-mono text-xs shadow-sm focus:border-emerald-500 focus:ring-emerald-500"></textarea>
+                                </label>
+                                <label class="block xl:col-span-2">
+                                    <span class="text-xs font-semibold uppercase tracking-wide text-emerald-800">Admin-Review JSON</span>
+                                    <textarea wire:model.defer="editAdminReviewJson" rows="6" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 font-mono text-xs shadow-sm focus:border-emerald-500 focus:ring-emerald-500"></textarea>
+                                </label>
+                            </div>
+
+                            <div class="flex justify-end">
+                                <button type="button" wire:click="saveRatingDetailEdits" wire:loading.attr="disabled" wire:target="saveRatingDetailEdits" class="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50">
+                                    <i class="fal fa-save" wire:loading.remove wire:target="saveRatingDetailEdits"></i>
+                                    <i class="fal fa-spinner fa-spin" wire:loading wire:target="saveRatingDetailEdits"></i>
+                                    <span wire:loading.remove wire:target="saveRatingDetailEdits">Aenderungen speichern</span>
+                                    <span wire:loading wire:target="saveRatingDetailEdits">Speichert...</span>
+                                </button>
+                            </div>
+                        </div>
+                    </details>
+                @elseif(! $selectedRating->executed_at && ! $selectedRating->base_claim_rating_id)
+                    <div class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                        Diese Bewertung ist aktuell nicht editierbar, weil sie verarbeitet wird oder in keinem bearbeitbaren Planungszustand ist.
+                    </div>
+                @endif
+
                 <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                     <div class="rounded-md border border-slate-200 bg-slate-50 p-3">
                         <div class="text-xs font-medium uppercase tracking-wide text-slate-500">Status</div>

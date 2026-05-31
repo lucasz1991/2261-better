@@ -120,7 +120,7 @@ class PlanSyntheticClaimRatings implements ShouldQueue
             }
 
             try {
-                $baseContext = $this->resolveBaseContext($connection, $typeId, $subtypeId);
+                $baseContext = $this->resolveBaseContext($connection, $typeId, $subtypeId, $settings);
             } catch (\Throwable $exception) {
                 Log::warning('Synthetic rating planning skipped one slot because base context could not be resolved.', [
                     'type_id' => $typeId,
@@ -441,7 +441,7 @@ class PlanSyntheticClaimRatings implements ShouldQueue
     /**
      * @return array<string, mixed>
      */
-    private function resolveBaseContext(string $connection, int $typeId, int $subtypeId): array
+    private function resolveBaseContext(string $connection, int $typeId, int $subtypeId, array $settings): array
     {
         $type = DB::connection($connection)
             ->table('insurance_types')
@@ -457,29 +457,29 @@ class PlanSyntheticClaimRatings implements ShouldQueue
             throw new \RuntimeException('Insurance type or subtype not found in base database.');
         }
 
-        $insurance = DB::connection($connection)
+        $insurances = DB::connection($connection)
             ->table('insurances')
             ->join('insurance_insurance_type as iit', 'iit.insurance_id', '=', 'insurances.id')
             ->join('insurance_type_insurance_subtype as itis', 'itis.insurance_type_id', '=', 'iit.insurance_type_id')
             ->where('iit.insurance_type_id', $typeId)
             ->where('itis.insurance_subtype_id', $subtypeId)
             ->where('insurances.is_active', true)
-            ->inRandomOrder()
-            ->first(['insurances.id', 'insurances.name']);
+            ->get(['insurances.id', 'insurances.name']);
 
-        if (! $insurance) {
-            $insurance = DB::connection($connection)
+        if ($insurances->isEmpty()) {
+            $insurances = DB::connection($connection)
                 ->table('insurances')
                 ->join('insurance_insurance_type as iit', 'iit.insurance_id', '=', 'insurances.id')
                 ->where('iit.insurance_type_id', $typeId)
                 ->where('insurances.is_active', true)
-                ->inRandomOrder()
-                ->first(['insurances.id', 'insurances.name']);
+                ->get(['insurances.id', 'insurances.name']);
         }
 
-        if (! $insurance) {
+        if ($insurances->isEmpty()) {
             throw new \RuntimeException('No active insurance found for selected type/subtype.');
         }
+
+        $insurance = $this->weightedRandomInsurance($insurances->all(), $settings['provider_weights'] ?? []);
 
         $questionnaireVersion = DB::connection($connection)
             ->table('rating_questionnaire_versions')
@@ -509,6 +509,44 @@ class PlanSyntheticClaimRatings implements ShouldQueue
                 'snapshot' => $this->decodeJson($questionnaireVersion->snapshot),
             ] : null,
         ];
+    }
+
+    /**
+     * @param array<int, object> $insurances
+     * @param array<int|string, mixed> $providerWeights
+     */
+    private function weightedRandomInsurance(array $insurances, array $providerWeights): object
+    {
+        $weighted = [];
+
+        foreach ($insurances as $insurance) {
+            $id = (int) $insurance->id;
+            $weight = max(0.0, (float) ($providerWeights[$id] ?? $providerWeights[(string) $id] ?? 1.0));
+
+            if ($weight > 0) {
+                $weighted[] = [
+                    'insurance' => $insurance,
+                    'weight' => $weight,
+                ];
+            }
+        }
+
+        if ($weighted === []) {
+            return $insurances[array_rand($insurances)];
+        }
+
+        $target = lcg_value() * array_sum(array_column($weighted, 'weight'));
+        $cursor = 0.0;
+
+        foreach ($weighted as $entry) {
+            $cursor += (float) $entry['weight'];
+
+            if ($target <= $cursor) {
+                return $entry['insurance'];
+            }
+        }
+
+        return $weighted[array_key_last($weighted)]['insurance'];
     }
 
     /**
