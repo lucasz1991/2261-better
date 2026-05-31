@@ -21,17 +21,13 @@
         @yield('content')
         <!-- Page Content -->
         @if(isset($slot))
-            <main class="bg-slate-100">
+            <main class="bg-slate-200">
                 <div class="main-content group-data-[sidebar-size=sm]:ml-[70px]">
                     <div class="min-h-screen page-content px-1" style="box-shadow: inset 0px 80px 30px -10px rgba(0, 0, 0, 0.2);">
                         <div class="container-fluid px-0 md:px-5">
                             @php
                                 $excludedUrls = [
-                                    '/',
-                                    'admin/user/*',
-                                    'admin/courses/*',  
-                                    'admin/mails',
-                                    'admin/assets/*',
+                                    'administrator',
                                 ];
                                 $useBox = !request()->is($excludedUrls);
                             @endphp

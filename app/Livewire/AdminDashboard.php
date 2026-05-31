@@ -25,6 +25,7 @@ class AdminDashboard extends Component
     public int $upcomingRatings = 0;
     public ?float $averageScore = null;
     public ?string $nextScheduledFor = null;
+    public ?string $nextScheduledAtIso = null;
     public string $syntheticUserNameMode = 'realistic';
 
     /** @var array<int, array<string, mixed>> */
@@ -127,6 +128,7 @@ class AdminDashboard extends Component
             ->orderBy('scheduled_for')
             ->first();
         $this->nextScheduledFor = $nextRating?->scheduled_for?->format('d.m.Y H:i');
+        $this->nextScheduledAtIso = $nextRating?->scheduled_for?->toIso8601String();
 
         $this->recentRatings = $this->recentRatings();
         $this->upcomingList = $this->upcomingRatings();
