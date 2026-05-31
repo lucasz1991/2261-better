@@ -26,6 +26,8 @@ class AdminConfig extends Component
     /** @var array<string, float|int|string|null> */
     public array $scoreWeights = [];
 
+    public string $syntheticUserNameMode = 'realistic';
+
     public string $openrouterApiUrl = 'https://openrouter.ai/api/v1/chat/completions';
     public string $openrouterApiKey = '';
     public string $openrouterModel = 'openrouter/auto';
@@ -64,6 +66,7 @@ class AdminConfig extends Component
         $this->subtypeWeights = $this->mergeSubtypeWeights($ratingSettings['subtype_weights'] ?? []);
         $this->hourWeights = $this->mergeHourWeights($ratingSettings['hour_weights'] ?? []);
         $this->scoreWeights = $this->mergeScoreWeights($ratingSettings['score_weights'] ?? []);
+        $this->syntheticUserNameMode = $this->normalizeSyntheticUserNameMode($ratingSettings['synthetic_user_name_mode'] ?? 'realistic');
 
         $openrouterSettings = Setting::getValue('openrouter', 'config') ?? [];
         $openrouterSettings = is_array($openrouterSettings) ? $openrouterSettings : [];
@@ -122,6 +125,14 @@ class AdminConfig extends Component
         $this->persistFormFillSettings();
 
         session()->flash('success', 'Formular-Einstellungen wurden gespeichert.');
+    }
+
+    public function saveRatingSettings(): void
+    {
+        $this->validateRatingSettings();
+        $this->persistRatingSettings();
+
+        session()->flash('success', 'Bewertungs-Einstellungen wurden gespeichert.');
     }
 
     public function saveDatabaseSettings(): void
@@ -306,6 +317,7 @@ class AdminConfig extends Component
             'subtypeWeights.*.*' => ['nullable', 'numeric', 'min:0', 'max:10000'],
             'hourWeights.*' => ['nullable', 'numeric', 'min:0', 'max:10000'],
             'scoreWeights.*' => ['nullable', 'numeric', 'min:0', 'max:10000'],
+            'syntheticUserNameMode' => ['required', 'in:realistic,simple,anonymous'],
             'openrouterApiUrl' => ['required', 'url'],
             'openrouterApiKey' => ['nullable', 'string'],
             'openrouterModel' => ['required', 'string', 'min:1'],
@@ -323,6 +335,18 @@ class AdminConfig extends Component
             'formFillStopBeforeSubmit' => ['boolean'],
             'formFillUseSyntheticPersonData' => ['boolean'],
             'formFillSourcePath' => ['nullable', 'string', 'max:255'],
+        ]);
+    }
+
+    private function validateRatingSettings(): void
+    {
+        $this->validate([
+            'dailyTarget' => ['required', 'integer', 'min:0', 'max:500'],
+            'typeWeights.*' => ['nullable', 'numeric', 'min:0', 'max:10000'],
+            'subtypeWeights.*.*' => ['nullable', 'numeric', 'min:0', 'max:10000'],
+            'hourWeights.*' => ['nullable', 'numeric', 'min:0', 'max:10000'],
+            'scoreWeights.*' => ['nullable', 'numeric', 'min:0', 'max:10000'],
+            'syntheticUserNameMode' => ['required', 'in:realistic,simple,anonymous'],
         ]);
     }
 
@@ -369,6 +393,7 @@ class AdminConfig extends Component
             'subtype_weights' => $this->nestedNumericWeights($this->subtypeWeights),
             'hour_weights' => $this->numericWeights($this->hourWeights),
             'score_weights' => $this->scoreNumericWeights($this->scoreWeights),
+            'synthetic_user_name_mode' => $this->normalizeSyntheticUserNameMode($this->syntheticUserNameMode),
         ]);
     }
 
@@ -566,5 +591,14 @@ class AdminConfig extends Component
         }
 
         return max(0.0, (float) str_replace(',', '.', (string) $value));
+    }
+
+    private function normalizeSyntheticUserNameMode(mixed $value): string
+    {
+        $value = (string) $value;
+
+        return in_array($value, ['realistic', 'simple', 'anonymous'], true)
+            ? $value
+            : 'realistic';
     }
 }

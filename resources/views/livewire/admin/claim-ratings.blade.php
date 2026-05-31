@@ -72,6 +72,10 @@
                 </thead>
                 <tbody class="divide-y divide-slate-100 bg-white">
                     @forelse($ratings as $rating)
+                        @php
+                            $syntheticUser = $rating->syntheticUser;
+                            $baseUserId = $syntheticUser?->base_user_id ?: $rating->base_user_id;
+                        @endphp
                         <tr
                             wire:key="claim-rating-{{ $rating->id }}"
                             wire:click="openRatingModal({{ $rating->id }})"
@@ -87,10 +91,19 @@
                                 {{ $rating->base_claim_rating_id ? '#' . $rating->base_claim_rating_id : '-' }}
                             </td>
                             <td class="whitespace-nowrap px-4 py-3 text-slate-700">
-                                @if($rating->base_user_id)
-                                    <span class="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
-                                        #{{ $rating->base_user_id }}
-                                    </span>
+                                @if($syntheticUser || $baseUserId)
+                                    <div class="space-y-1">
+                                        @if($syntheticUser)
+                                            <span class="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-700">
+                                                Lokal #{{ $syntheticUser->id }}
+                                            </span>
+                                        @endif
+                                        @if($baseUserId)
+                                            <span class="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
+                                                Base #{{ $baseUserId }}
+                                            </span>
+                                        @endif
+                                    </div>
                                 @else
                                     <span class="text-slate-400">-</span>
                                 @endif

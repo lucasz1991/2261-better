@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\ClaimRating;
+use App\Models\SyntheticRatingUser;
 use App\Services\AiConnection;
 use App\Services\BaseClaimRatingPublisher;
 use App\Services\RatingDistributionAnalyzer;
@@ -60,6 +61,9 @@ class GenerateSyntheticClaimRating implements ShouldQueue
             if (! is_array($baseContext) || $baseContext === []) {
                 throw new \RuntimeException('Missing base context for synthetic rating generation.');
             }
+
+            SyntheticRatingUser::ensureForClaimRating($this->claimRating);
+            $this->claimRating->refresh();
 
             $payload = $aiConnection->generateSyntheticClaimRatingPayload([
                 'trainContent' => $this->generationPrompt(),
@@ -200,15 +204,7 @@ TEXT;
         $syntheticUser = $this->claimRating->syntheticUser;
 
         if ($syntheticUser) {
-            return [
-                'id' => $syntheticUser->id,
-                'base_user_id' => $syntheticUser->base_user_id,
-                'name' => $syntheticUser->name,
-                'email' => $syntheticUser->email,
-                'email_domain' => $syntheticUser->email_domain,
-                'role' => $syntheticUser->role,
-                'status' => $syntheticUser->status,
-            ];
+            return $syntheticUser->publicProfile();
         }
 
         $profile = $this->claimRating->data['planning']['synthetic_user_profile'] ?? null;

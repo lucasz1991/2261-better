@@ -101,7 +101,7 @@ class BaseClaimRatingPublisher
                 ->table('claim_ratings')
                 ->where('id', $baseId)
                 ->first();
-            $baseUserId = (int) ($rating->base_user_id ?: ($baseRating->user_id ?? 0));
+            $baseUserId = (int) ($rating->base_user_id ?: ($rating->syntheticUser?->base_user_id ?? ($baseRating->user_id ?? 0)));
 
             if ($baseRating && ! $this->isOwnSyntheticBaseRating($baseRating, $rating)) {
                 throw new \RuntimeException('Base-Bewertung wurde nicht geloescht, weil sie nicht als eigener synthetischer Datensatz markiert ist.');
@@ -290,16 +290,7 @@ class BaseClaimRatingPublisher
             'password' => Hash::make(Str::random(40)),
             'role' => $syntheticUser->role ?: 'guest',
             'status' => (bool) $syntheticUser->status,
-            'privacy_settings' => json_encode([
-                'comments' => [
-                    'name_visibility' => 'none',
-                    'avatar_visibility' => 'none',
-                ],
-                'ratings' => [
-                    'name_visibility' => 'none',
-                    'avatar_visibility' => 'none',
-                ],
-            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'privacy_settings' => json_encode($syntheticUser->privacySettings(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             'created_at' => $now,
             'updated_at' => $now,
         ];
@@ -319,51 +310,7 @@ class BaseClaimRatingPublisher
 
     private function localSyntheticUser(ClaimRating $rating): SyntheticRatingUser
     {
-        if ($rating->synthetic_rating_user_id) {
-            $syntheticUser = SyntheticRatingUser::withTrashed()->find((int) $rating->synthetic_rating_user_id);
-
-            if ($syntheticUser) {
-                return $syntheticUser;
-            }
-        }
-
-        $profile = data_get($rating->data, 'planning.synthetic_user_profile');
-        $profile = is_array($profile) ? $profile : [];
-        $email = (string) ($profile['email'] ?? '');
-
-        if (! $this->isOwnSyntheticEmail($email)) {
-            $email = 'synthetic-2261-rating-' . $rating->id . '@example.invalid';
-        }
-
-        $syntheticUser = SyntheticRatingUser::withTrashed()->firstOrCreate(
-            ['email' => $email],
-            [
-                'base_user_id' => $rating->base_user_id,
-                'name' => (string) ($profile['name'] ?? 'Interner Testnutzer 2261 #' . $rating->id),
-                'email_domain' => 'example.invalid',
-                'role' => (string) ($profile['role'] ?? 'guest'),
-                'status' => (bool) ($profile['status'] ?? false),
-                'email_verified_at' => null,
-                'data' => [
-                    'synthetic' => true,
-                    'do_not_publish' => true,
-                    'source_app' => '2261-better',
-                    'created_from_claim_rating_id' => $rating->id,
-                ],
-            ]
-        );
-
-        if ($syntheticUser->trashed()) {
-            $syntheticUser->restore();
-        }
-
-        if ($rating->base_user_id && ! $syntheticUser->base_user_id) {
-            $syntheticUser->forceFill(['base_user_id' => (int) $rating->base_user_id])->saveQuietly();
-        }
-
-        $rating->forceFill(['synthetic_rating_user_id' => $syntheticUser->id])->saveQuietly();
-
-        return $syntheticUser;
+        return SyntheticRatingUser::ensureForClaimRating($rating);
     }
 
     private function isOwnSyntheticBaseRating(object $baseRating, ClaimRating $localRating): bool
@@ -382,14 +329,31 @@ class BaseClaimRatingPublisher
         $email = (string) ($baseUser->email ?? '');
         $name = (string) ($baseUser->name ?? '');
 
-        return $this->isOwnSyntheticEmail($email)
-            && str_starts_with($name, 'Interner Testnutzer 2261');
+        if (! $this->isOwnSyntheticEmail($email)) {
+            return false;
+        }
+
+        if (
+            str_starts_with($name, 'Interner Testnutzer 2261')
+            || str_starts_with($name, 'Anonyme Testperson')
+            || str_starts_with($name, 'Testperson ')
+            || str_contains($name, '(Testperson)')
+        ) {
+            return true;
+        }
+
+        return Schema::hasTable('synthetic_rating_users')
+            && SyntheticRatingUser::withTrashed()->where('email', $email)->exists();
     }
 
     private function isOwnSyntheticEmail(string $email): bool
     {
+        $domain = strtolower(trim(substr(strrchr($email, '@') ?: '', 1)));
+
         return str_starts_with($email, 'synthetic-2261-')
-            && str_ends_with($email, '@example.invalid');
+            && $domain !== ''
+            && $domain !== 'regulierungs-check.de'
+            && ! str_ends_with($domain, '.regulierungs-check.de');
     }
 
     private function deleteSyntheticBaseUserIfUnused(string $connection, int $baseUserId): void
@@ -445,8 +409,7 @@ class BaseClaimRatingPublisher
 
         $users = DB::connection($connection)
             ->table('users')
-            ->where('email', 'like', 'synthetic-2261-%@example.invalid')
-            ->where('name', 'like', 'Interner Testnutzer 2261%')
+            ->where('email', 'like', 'synthetic-2261-%@%')
             ->get(['id', 'email', 'name']);
 
         $deleted = 0;

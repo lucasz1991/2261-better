@@ -134,6 +134,7 @@ class RatingDistributionAnalyzer
             'subtype_weights' => $this->mergeSubtypeWeights($analysis['subtype_weights'] ?? []),
             'hour_weights' => $this->mergeHourWeights($analysis['hour_weights'] ?? []),
             'score_weights' => $this->mergeScoreWeights($analysis['score_weights'] ?? []),
+            'synthetic_user_name_mode' => $currentSettings['synthetic_user_name_mode'] ?? 'realistic',
         ]);
     }
 
@@ -397,7 +398,7 @@ class RatingDistributionAnalyzer
             'ratings.user_id',
         ];
 
-        foreach (['email', 'email_verified_at', 'role', 'status', 'created_at'] as $column) {
+        foreach (['email', 'email_verified_at', 'role', 'status', 'privacy_settings', 'created_at'] as $column) {
             $select[] = Schema::connection($connection)->hasColumn('users', $column)
                 ? "users.{$column}"
                 : DB::raw("NULL as {$column}");
@@ -471,6 +472,17 @@ class RatingDistributionAnalyzer
             ->values()
             ->all();
 
+        $privacySettings = $rows
+            ->map(fn (object $row): array => $this->decodeJson($row->privacy_settings ?? null))
+            ->all();
+
+        $privacyDistributions = [
+            'ratings_name_visibility' => $this->privacyDistribution($privacySettings, 'ratings', 'name_visibility'),
+            'ratings_avatar_visibility' => $this->privacyDistribution($privacySettings, 'ratings', 'avatar_visibility'),
+            'comments_name_visibility' => $this->privacyDistribution($privacySettings, 'comments', 'name_visibility'),
+            'comments_avatar_visibility' => $this->privacyDistribution($privacySettings, 'comments', 'avatar_visibility'),
+        ];
+
         return [
             'available' => true,
             'source' => $this->userAnalysisSource(),
@@ -485,6 +497,7 @@ class RatingDistributionAnalyzer
             'email_domains' => $domains,
             'roles' => $roles,
             'statuses' => $statuses,
+            'privacy_distributions' => $privacyDistributions,
             'privacy_note' => 'Es werden nur Domains und Zaehler gespeichert, keine echten E-Mail-Adressen oder Namen.',
         ];
     }
@@ -609,6 +622,7 @@ class RatingDistributionAnalyzer
                 'verified_email_percent' => $userStats['verified_email_percent'] ?? null,
                 'top_email_domains' => array_slice($userStats['email_domains'] ?? [], 0, 5),
                 'roles' => $userStats['roles'] ?? [],
+                'privacy_distributions' => $userStats['privacy_distributions'] ?? [],
                 'privacy_note' => 'Nur aggregierte Benutzer-Muster verwenden, keine echten Namen oder E-Mail-Adressen uebernehmen.',
             ],
             'instructions' => [
@@ -780,7 +794,59 @@ class RatingDistributionAnalyzer
 
         $domain = strtolower(trim(substr(strrchr($email, '@') ?: '', 1)));
 
-        return $domain !== '' ? $domain : null;
+        if ($domain === '' || $domain === 'regulierungs-check.de' || str_ends_with($domain, '.regulierungs-check.de')) {
+            return null;
+        }
+
+        return $domain;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $settings
+     * @return array<int, array{value: string, count: int, percent: float}>
+     */
+    private function privacyDistribution(array $settings, string $section, string $key): array
+    {
+        $values = collect($settings)
+            ->map(fn (array $setting): string => $this->privacyValue($setting, $section, $key))
+            ->countBy()
+            ->sortDesc();
+
+        $total = max(1, $values->sum());
+
+        return $values
+            ->map(fn (int $count, string $value): array => [
+                'value' => $value,
+                'count' => $count,
+                'percent' => round(($count / $total) * 100, 2),
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function privacyValue(array $setting, string $section, string $key): string
+    {
+        $value = data_get($setting, "{$section}.{$key}", 'none');
+
+        return in_array($value, ['all', 'users', 'none'], true) ? $value : 'none';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function decodeJson(mixed $value): array
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+
+        if (! is_string($value) || $value === '') {
+            return [];
+        }
+
+        $decoded = json_decode($value, true);
+
+        return is_array($decoded) ? $decoded : [];
     }
 
     /**

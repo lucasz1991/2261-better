@@ -185,7 +185,7 @@
                                 >
                             </div>
 
-                            <button type="button" wire:click="save" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500">
+                            <button type="button" wire:click="saveRatingSettings" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500">
                                 Bewertungswerte speichern
                             </button>
                         </div>
@@ -386,6 +386,30 @@
                         </div>
                     </div>
 
+                    <div class="rounded-lg border border-slate-200 bg-white p-4">
+                        <div class="grid gap-4 lg:grid-cols-2 lg:items-end">
+                            <div>
+                                <label for="synthetic-user-name-mode" class="block text-sm font-medium text-slate-700">Namensmodus fuer Demo-Benutzer</label>
+                                <select
+                                    id="synthetic-user-name-mode"
+                                    wire:model.defer="syntheticUserNameMode"
+                                    class="mt-2 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                >
+                                    <option value="realistic">Realistische Testnamen</option>
+                                    <option value="simple">Simple Fakenamen</option>
+                                    <option value="anonymous">Alle anonym</option>
+                                </select>
+                                <p class="mt-2 text-xs text-slate-500">
+                                    Der Modus gilt fuer neu geplante Demo-Benutzer. E-Mail-Domains werden aus der Analyse gezogen, <span class="font-mono">regulierungs-check.de</span> wird ausgeschlossen.
+                                </p>
+                            </div>
+
+                            <button type="button" wire:click="saveRatingSettings" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500">
+                                Namensmodus speichern
+                            </button>
+                        </div>
+                    </div>
+
                     @if(! ($userStats['available'] ?? false))
                         <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                             {{ $userStats['reason'] ?? 'Noch keine Benutzeranalyse vorhanden. Starte zuerst die Bewertungsanalyse.' }}
@@ -444,6 +468,39 @@
                             </div>
 
                             <div class="rounded-lg border border-slate-200 bg-white p-4">
+                                <h3 class="text-sm font-semibold text-slate-900">Sichtbarkeit Bewertungen</h3>
+                                @php($privacyLabels = ['all' => 'Alle', 'users' => 'Benutzer', 'none' => 'Aus'])
+                                <div class="mt-3 space-y-4">
+                                    <div>
+                                        <div class="text-xs font-medium uppercase tracking-wide text-slate-500">Name</div>
+                                        <div class="mt-2 space-y-2">
+                                            @forelse(data_get($userStats, 'privacy_distributions.ratings_name_visibility', []) as $item)
+                                                <div class="flex items-center justify-between gap-3 rounded-md bg-slate-50 px-3 py-2 text-sm">
+                                                    <span class="font-medium text-slate-800">{{ $privacyLabels[$item['value'] ?? 'none'] ?? ($item['value'] ?? '-') }}</span>
+                                                    <span class="text-slate-500">{{ number_format((float) ($item['percent'] ?? 0), 1, ',', '.') }}%</span>
+                                                </div>
+                                            @empty
+                                                <div class="text-sm text-slate-500">Keine Werte erkannt.</div>
+                                            @endforelse
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="text-xs font-medium uppercase tracking-wide text-slate-500">Avatar</div>
+                                        <div class="mt-2 space-y-2">
+                                            @forelse(data_get($userStats, 'privacy_distributions.ratings_avatar_visibility', []) as $item)
+                                                <div class="flex items-center justify-between gap-3 rounded-md bg-slate-50 px-3 py-2 text-sm">
+                                                    <span class="font-medium text-slate-800">{{ $privacyLabels[$item['value'] ?? 'none'] ?? ($item['value'] ?? '-') }}</span>
+                                                    <span class="text-slate-500">{{ number_format((float) ($item['percent'] ?? 0), 1, ',', '.') }}%</span>
+                                                </div>
+                                            @empty
+                                                <div class="text-sm text-slate-500">Keine Werte erkannt.</div>
+                                            @endforelse
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="rounded-lg border border-slate-200 bg-white p-4">
                                 <h3 class="text-sm font-semibold text-slate-900">Quelle</h3>
                                 <dl class="mt-3 space-y-3 text-sm">
                                     <div>
@@ -464,7 +521,7 @@
 
                         <div class="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
                             <div class="font-semibold">Einbindung in Planung und Ausfuehrung</div>
-                            <p class="mt-1">Geplante Bewertungen erhalten ein eindeutig markiertes synthetisches Testnutzer-Profil mit <span class="font-mono">example.invalid</span>. Beim Base-Schreiben wird dieser Testnutzer angelegt, lokal als Base-User-ID gespeichert und beim Rueckruf wieder entfernt.</p>
+                            <p class="mt-1">Geplante Bewertungen erhalten einen lokalen Eintrag in <span class="font-mono">synthetic_rating_users</span>. Der E-Mail-Local-Part enthaelt Name und 2261-Kennung, die Domain kommt aus der Analyse; <span class="font-mono">regulierungs-check.de</span> wird nie verwendet.</p>
                         </div>
                     @endif
                 </section>

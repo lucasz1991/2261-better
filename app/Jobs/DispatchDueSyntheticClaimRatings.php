@@ -175,7 +175,8 @@ class DispatchDueSyntheticClaimRatings implements ShouldQueue
             'subtype_id' => $rating->insurance_subtype_id,
             'insurance_id' => $rating->insurance_id,
             'base_claim_rating_id' => $rating->base_claim_rating_id,
-            'base_user_id' => $rating->base_user_id,
+            'synthetic_rating_user_id' => $rating->synthetic_rating_user_id,
+            'base_user_id' => $rating->syntheticUser?->base_user_id ?: $rating->base_user_id,
         ];
     }
 }
