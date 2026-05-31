@@ -375,8 +375,17 @@ class BaseClaimRatingPublisher
             return;
         }
 
+        // Zähle nur 2261-better Bewertungen, nicht andere Bewertungen des Users
         $ratingsCount = Schema::connection($connection)->hasTable('claim_ratings')
-            ? DB::connection($connection)->table('claim_ratings')->where('user_id', $baseUserId)->count()
+            ? DB::connection($connection)
+                ->table('claim_ratings')
+                ->where('user_id', $baseUserId)
+                ->where(function ($query) {
+                    $query
+                        ->whereRaw("JSON_EXTRACT(data, '$.source_app') = '2261-better'")
+                        ->orWhereRaw("JSON_EXTRACT(admin_review, '$.source_app') = '2261-better'");
+                })
+                ->count()
             : 0;
 
         if ($ratingsCount === 0) {
@@ -415,8 +424,17 @@ class BaseClaimRatingPublisher
         $deleted = 0;
 
         foreach ($users as $user) {
+            // Zähle nur 2261-better Bewertungen
             $ratingsCount = Schema::connection($connection)->hasTable('claim_ratings')
-                ? DB::connection($connection)->table('claim_ratings')->where('user_id', (int) $user->id)->count()
+                ? DB::connection($connection)
+                    ->table('claim_ratings')
+                    ->where('user_id', (int) $user->id)
+                    ->where(function ($query) {
+                        $query
+                            ->whereRaw("JSON_EXTRACT(data, '$.source_app') = '2261-better'")
+                            ->orWhereRaw("JSON_EXTRACT(admin_review, '$.source_app') = '2261-better'");
+                    })
+                    ->count()
                 : 0;
 
             if ($ratingsCount > 0 || ! $this->isOwnSyntheticBaseUser($user)) {
