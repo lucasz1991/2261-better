@@ -10,7 +10,7 @@
                         class="hidden font-semibold  text-gray-700 align-middle xl:block  leading-[69px]">   
                         <img 
                             class="w-full" 
-                            src="{{ asset('/site-images/cbw_logo_text.png') }}" 
+                            src="{{ asset('/site-images/logo_text.png') }}" 
                             alt="Logo Schriftzug">  
                     </span>
                 </a>
