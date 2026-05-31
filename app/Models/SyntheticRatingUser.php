@@ -204,6 +204,9 @@ class SyntheticRatingUser extends Model
             'base_user_id' => null,
             'data' => $data,
         ])->saveQuietly();
+
+        // Löschen des synthetischen Benutzers
+        $this->delete();
     }
 
     /**

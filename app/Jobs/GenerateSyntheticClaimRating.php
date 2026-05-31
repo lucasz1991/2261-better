@@ -82,8 +82,6 @@ class GenerateSyntheticClaimRating implements ShouldQueue
             $attachments['generation']['comment'] = $payload['generation_comment'] ?? '';
             $attachments['generation']['generated_at'] = now()->toDateTimeString();
 
-            $data['synthetic'] = true;
-            $data['do_not_publish'] = false;
             $data['ai_generation'] = [
                 'generated_at' => now()->toDateTimeString(),
                 'generator' => self::class,
@@ -103,7 +101,7 @@ class GenerateSyntheticClaimRating implements ShouldQueue
                 'status' => ClaimRating::STATUS_PROCESSING,
                 'executed_at' => null,
                 'is_public' => true,
-                'moderator_comment' => 'Synthetischer KI-generierter Testdatensatz für Qualitätskontrolle.',
+                'moderator_comment' => null,
             ])->saveQuietly();
 
             ClaimRatingAIEval::dispatchSync($this->claimRating->fresh(), false, $this->markExecuted);
