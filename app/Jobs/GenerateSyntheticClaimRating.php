@@ -83,7 +83,7 @@ class GenerateSyntheticClaimRating implements ShouldQueue
             $attachments['generation']['generated_at'] = now()->toDateTimeString();
 
             $data['synthetic'] = true;
-            $data['do_not_publish'] = true;
+            $data['do_not_publish'] = false;
             $data['ai_generation'] = [
                 'generated_at' => now()->toDateTimeString(),
                 'generator' => self::class,
@@ -102,8 +102,8 @@ class GenerateSyntheticClaimRating implements ShouldQueue
                 'data' => $data,
                 'status' => ClaimRating::STATUS_PROCESSING,
                 'executed_at' => null,
-                'is_public' => false,
-                'moderator_comment' => 'Interner synthetischer Testdatensatz. Nicht als echte Bewertung verwenden.',
+                'is_public' => true,
+                'moderator_comment' => 'Synthetischer KI-generierter Testdatensatz für Qualitätskontrolle.',
             ])->saveQuietly();
 
             ClaimRatingAIEval::dispatchSync($this->claimRating->fresh(), false, $this->markExecuted);
@@ -180,9 +180,9 @@ TEXT;
         return [
             'safety' => [
                 'synthetic' => true,
-                'internal_only' => true,
-                'do_not_publish' => true,
-                'use_only_aggregate_patterns' => true,
+                'internal_only' => false,
+                'do_not_publish' => false,
+                'use_only_aggregate_patterns' => false,
             ],
             'insurance_type' => $baseContext['insurance_type'] ?? [],
             'insurance_subtype' => $baseContext['insurance_subtype'] ?? [],

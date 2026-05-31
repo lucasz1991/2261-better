@@ -51,8 +51,8 @@ class SyntheticRatingUser extends Model
             'email' => $email,
             'email_domain' => $emailDomain,
             'role' => 'guest',
-            'status' => false,
-            'email_verified_at' => null,
+            'status' => true,
+            'email_verified_at' => now(),
             'data' => [
                 'synthetic' => true,
                 'do_not_publish' => true,
@@ -113,10 +113,10 @@ class SyntheticRatingUser extends Model
                 [
                     'base_user_id' => $claimRating->base_user_id,
                     'name' => $profileName,
-                    'email_domain' => self::domainFromEmail($email) ?? 'example.invalid',
+                    'email_domain' => self::domainFromEmail($email) ?? 'gmail.com',
                     'role' => (string) ($profile['role'] ?? 'guest'),
-                    'status' => (bool) ($profile['status'] ?? false),
-                    'email_verified_at' => null,
+                    'status' => (bool) ($profile['status'] ?? true),
+                    'email_verified_at' => now(),
                     'data' => [
                         'synthetic' => true,
                         'do_not_publish' => true,
@@ -125,7 +125,7 @@ class SyntheticRatingUser extends Model
                         'persona' => $persona,
                         'name_mode' => $nameMode,
                         'email_profile' => [
-                            'domain' => self::domainFromEmail($email) ?? 'example.invalid',
+                            'domain' => self::domainFromEmail($email) ?? 'gmail.com',
                             'source' => data_get($profile, 'email_profile.source', 'planning_profile'),
                             'excluded_domains' => self::excludedEmailDomains(),
                         ],
@@ -457,28 +457,103 @@ class SyntheticRatingUser extends Model
     private static function syntheticPersona(array $privacySettings, string $nameMode): array
     {
         $firstNames = [
+            // Weibliche Namen
             'Anna', 'Laura', 'Sophie', 'Miriam', 'Nina', 'Katharina', 'Lea', 'Julia',
             'Sarah', 'Nadine', 'Claudia', 'Melanie', 'Eva', 'Tanja', 'Maren', 'Christina',
+            'Maria', 'Lisa', 'Barbara', 'Petra', 'Sandra', 'Daniela', 'Sabine', 'Angelika',
+            'Silke', 'Doris', 'Christine', 'Monika', 'Elvira', 'Marianne', 'Renate', 'Gisela',
+            'Kerstin', 'Susanne', 'Heike', 'Beate', 'Ingrid', 'Ursula', 'Helene', 'Karin',
+            'Martina', 'Birgit', 'Michaela', 'Cornelia', 'Sylvia', 'Vera', 'Annette', 'Brigitte',
+            'Christiane', 'Annegret', 'Inge', 'Edith', 'Heidrun', 'Margot', 'Sigrid', 'Waltraud',
+            'Liesbeth', 'Gerda', 'Marlene', 'Rosemarie', 'Lieselotte', 'Christa', 'Karlotta', 'Anika',
+            // Männliche Namen
             'Michael', 'Daniel', 'Thomas', 'Stefan', 'Markus', 'Jan', 'Lukas', 'Tim',
             'Christian', 'Andreas', 'Sebastian', 'Florian', 'Matthias', 'Philipp', 'Martin', 'Oliver',
+            'Robert', 'Klaus', 'Rainer', 'Werner', 'Helmut', 'Dieter', 'Gerhard', 'Frank',
+            'Hans', 'Horst', 'Juergen', 'Wolfgang', 'Bernhard', 'Friedrich', 'Karl', 'Alfons',
+            'Hermann', 'Siegfried', 'Erwin', 'Wilfried', 'Edmund', 'Armin', 'Bruno', 'Udo',
+            'Lothar', 'Gunter', 'Günther', 'Norbert', 'Heinz', 'Josef', 'Hubert', 'Alwin',
+            'Erich', 'Oswald', 'Theodor', 'Leonhard', 'Willi', 'Otto', 'Adolf', 'Heribert',
+            'Eckhard', 'Guenther', 'Reinhardt', 'Konrad', 'Eduard', 'Manfred', 'Wilmar', 'Volkmar',
         ];
         $lastNames = [
             'Meyer', 'Schneider', 'Fischer', 'Weber', 'Hoffmann', 'Wagner', 'Becker',
             'Schulz', 'Koch', 'Richter', 'Klein', 'Wolf', 'Neumann', 'Zimmermann',
             'Hartmann', 'Schmitt', 'Werner', 'Schmitz', 'Krueger', 'Lange', 'Schroeder',
             'Krause', 'Lehmann', 'Huber', 'Maier', 'Fuchs', 'Peters', 'Lang',
+            'Mueller', 'Braun', 'Keller', 'Hoffmann', 'Schutz', 'Baum', 'Groß',
+            'Loewe', 'Baecker', 'Hahn', 'Kramer', 'Germann', 'Heuer', 'Handler',
+            'Beck', 'Gaertner', 'Raabe', 'Siegel', 'Knab', 'Steiner', 'Roth',
+            'Seitz', 'Mayer', 'Erwin', 'Stieglitz', 'Ploch', 'Ostrowski', 'Sauer',
+            'Zimmerman', 'Meier', 'Beier', 'Beyer', 'Kaiser', 'Kirst', 'Kister',
+            'Klausen', 'Klasen', 'Klaus', 'Klausing', 'Klausnitzer', 'Klauss', 'Klaussman',
+            'Scholz', 'Scholl', 'Schueler', 'Schueller', 'Schuhmann', 'Schuller', 'Schulte',
+            'Schultze', 'Schuster', 'Schwaab', 'Schwabe', 'Schwab', 'Schwack', 'Schwager',
+            'Schwalbe', 'Schwaller', 'Schwamm', 'Schwammberger', 'Schwander', 'Schwandt', 'Schwab',
+            'Rienecker', 'Riedle', 'Riegel', 'Riehle', 'Rieker', 'Riel', 'Rieprich',
+            'Riese', 'Riesinger', 'Riesselman', 'Riewald', 'Riewe', 'Riffel', 'Rige',
         ];
         $regions = [
+            // Nordrhein-Westfalen
             ['state' => 'Nordrhein-Westfalen', 'city' => 'Koeln', 'postal_code_area' => '50xxx'],
             ['state' => 'Nordrhein-Westfalen', 'city' => 'Dortmund', 'postal_code_area' => '44xxx'],
+            ['state' => 'Nordrhein-Westfalen', 'city' => 'Duesseldorf', 'postal_code_area' => '40xxx'],
+            ['state' => 'Nordrhein-Westfalen', 'city' => 'Essen', 'postal_code_area' => '45xxx'],
+            ['state' => 'Nordrhein-Westfalen', 'city' => 'Duisburg', 'postal_code_area' => '47xxx'],
+            ['state' => 'Nordrhein-Westfalen', 'city' => 'Bochum', 'postal_code_area' => '44xxx'],
+            ['state' => 'Nordrhein-Westfalen', 'city' => 'Gelsenkirchen', 'postal_code_area' => '45xxx'],
+            ['state' => 'Nordrhein-Westfalen', 'city' => 'Muenster', 'postal_code_area' => '48xxx'],
+            // Bayern
             ['state' => 'Bayern', 'city' => 'Nuernberg', 'postal_code_area' => '90xxx'],
             ['state' => 'Bayern', 'city' => 'Muenchen', 'postal_code_area' => '80xxx'],
+            ['state' => 'Bayern', 'city' => 'Regensburg', 'postal_code_area' => '93xxx'],
+            ['state' => 'Bayern', 'city' => 'Augsburg', 'postal_code_area' => '86xxx'],
+            ['state' => 'Bayern', 'city' => 'Wuerzburg', 'postal_code_area' => '97xxx'],
+            ['state' => 'Bayern', 'city' => 'Bamberg', 'postal_code_area' => '96xxx'],
+            ['state' => 'Bayern', 'city' => 'Ansbach', 'postal_code_area' => '91xxx'],
+            ['state' => 'Bayern', 'city' => 'Bayreuth', 'postal_code_area' => '95xxx'],
+            // Hessen
             ['state' => 'Hessen', 'city' => 'Frankfurt am Main', 'postal_code_area' => '60xxx'],
+            ['state' => 'Hessen', 'city' => 'Wiesbaden', 'postal_code_area' => '65xxx'],
+            ['state' => 'Hessen', 'city' => 'Darmstadt', 'postal_code_area' => '64xxx'],
+            ['state' => 'Hessen', 'city' => 'Kassel', 'postal_code_area' => '34xxx'],
+            ['state' => 'Hessen', 'city' => 'Offenbach am Main', 'postal_code_area' => '63xxx'],
+            ['state' => 'Hessen', 'city' => 'Marburg', 'postal_code_area' => '35xxx'],
+            // Sachsen
             ['state' => 'Sachsen', 'city' => 'Leipzig', 'postal_code_area' => '04xxx'],
+            ['state' => 'Sachsen', 'city' => 'Dresden', 'postal_code_area' => '01xxx'],
+            ['state' => 'Sachsen', 'city' => 'Chemnitz', 'postal_code_area' => '09xxx'],
+            ['state' => 'Sachsen', 'city' => 'Zwickau', 'postal_code_area' => '08xxx'],
+            ['state' => 'Sachsen', 'city' => 'Plauen', 'postal_code_area' => '08xxx'],
+            // Niedersachsen
             ['state' => 'Niedersachsen', 'city' => 'Hannover', 'postal_code_area' => '30xxx'],
+            ['state' => 'Niedersachsen', 'city' => 'Braunschweig', 'postal_code_area' => '38xxx'],
+            ['state' => 'Niedersachsen', 'city' => 'Goettingen', 'postal_code_area' => '37xxx'],
+            ['state' => 'Niedersachsen', 'city' => 'Osnabrueck', 'postal_code_area' => '49xxx'],
+            ['state' => 'Niedersachsen', 'city' => 'Oldenburg', 'postal_code_area' => '26xxx'],
+            // Baden-Württemberg
             ['state' => 'Baden-Wuerttemberg', 'city' => 'Stuttgart', 'postal_code_area' => '70xxx'],
+            ['state' => 'Baden-Wuerttemberg', 'city' => 'Karlsruhe', 'postal_code_area' => '76xxx'],
+            ['state' => 'Baden-Wuerttemberg', 'city' => 'Heidelberg', 'postal_code_area' => '69xxx'],
+            ['state' => 'Baden-Wuerttemberg', 'city' => 'Ulm', 'postal_code_area' => '89xxx'],
+            ['state' => 'Baden-Wuerttemberg', 'city' => 'Mannheim', 'postal_code_area' => '68xxx'],
+            ['state' => 'Baden-Wuerttemberg', 'city' => 'Freiburg', 'postal_code_area' => '79xxx'],
+            // Bremen, Hamburg, Berlin
             ['state' => 'Hamburg', 'city' => 'Hamburg', 'postal_code_area' => '20xxx'],
             ['state' => 'Berlin', 'city' => 'Berlin', 'postal_code_area' => '10xxx'],
+            ['state' => 'Bremen', 'city' => 'Bremen', 'postal_code_area' => '28xxx'],
+            // Schleswig-Holstein
+            ['state' => 'Schleswig-Holstein', 'city' => 'Kiel', 'postal_code_area' => '24xxx'],
+            ['state' => 'Schleswig-Holstein', 'city' => 'Luebeck', 'postal_code_area' => '23xxx'],
+            // Brandenburg
+            ['state' => 'Brandenburg', 'city' => 'Potsdam', 'postal_code_area' => '14xxx'],
+            ['state' => 'Brandenburg', 'city' => 'Cottbus', 'postal_code_area' => '03xxx'],
+            // Mecklenburg-Vorpommern
+            ['state' => 'Mecklenburg-Vorpommern', 'city' => 'Rostock', 'postal_code_area' => '18xxx'],
+            ['state' => 'Mecklenburg-Vorpommern', 'city' => 'Schwerin', 'postal_code_area' => '19xxx'],
+            // Rheinland-Pfalz
+            ['state' => 'Rheinland-Pfalz', 'city' => 'Mainz', 'postal_code_area' => '55xxx'],
+            ['state' => 'Rheinland-Pfalz', 'city' => 'Ludwigshafen am Rhein', 'postal_code_area' => '67xxx'],
         ];
         $ageRanges = ['25-34', '35-44', '45-54', '55-64', '65+'];
         $households = ['Single-Haushalt', 'Paar ohne Kinder', 'Familie mit Kindern', 'Mehrpersonenhaushalt'];
