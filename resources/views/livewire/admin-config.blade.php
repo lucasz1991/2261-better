@@ -657,39 +657,62 @@
                     <div class="overflow-hidden rounded-lg border border-slate-200 bg-white">
                         @foreach($catalog as $typeId => $type)
                             @php($typeWeight = (float) ($typeWeights[$typeId] ?? 0))
-                            <div x-data="{ typeWeight: @js($typeWeight) }" class="border-b border-slate-100 p-4 last:border-b-0">
-                                <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_170px_260px] md:items-center">
+                            <div
+                                x-data="{
+                                    typeWeight: @js($typeWeight),
+                                    setTypeWeight(value) {
+                                        this.typeWeight = Math.max(0, Math.min(10000, Number(value) || 0));
+                                        $wire.set('typeWeights.{{ $typeId }}', this.typeWeight);
+                                    }
+                                }"
+                                class="border-b border-slate-100 p-4 last:border-b-0"
+                            >
+                                <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px] xl:items-center">
                                     <div>
                                         <div class="font-medium text-slate-900">#{{ $typeId }} {{ $type['name'] }}</div>
                                         <div class="mt-1 text-xs text-slate-500">{{ count($type['subtypes']) }} Unterarten</div>
-                                        <div class="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                                        <div class="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-100">
                                             <div class="h-full rounded-full bg-slate-900" :style="'width: ' + Math.max(2, Math.min(100, Number(typeWeight) || 0)) + '%'"></div>
                                         </div>
                                     </div>
 
-                                    <div>
-                                        <label for="type-weight-{{ $typeId }}" class="block text-xs font-medium uppercase tracking-wide text-slate-500">Gewicht Art</label>
-                                        <input
-                                            id="type-weight-{{ $typeId }}"
-                                            type="number"
-                                            min="0"
-                                            step="0.1"
-                                            x-model.number="typeWeight"
-                                            wire:model.live.debounce.300ms="typeWeights.{{ $typeId }}"
-                                            class="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                                        >
+                                    <div class="rounded-md border border-slate-200 bg-slate-50 p-2.5">
+                                        <div class="mb-2 flex items-center justify-between gap-3">
+                                            <span class="text-xs font-semibold uppercase tracking-wide text-slate-500">Gewicht Art</span>
+                                            <span class="text-sm font-semibold text-slate-900" x-text="Number(typeWeight).toFixed(1).replace('.', ',')"></span>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <button type="button" @click="setTypeWeight(typeWeight - 1)" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-600 hover:bg-slate-100" aria-label="Art-Gewicht reduzieren">
+                                                <i class="fal fa-minus text-xs"></i>
+                                            </button>
+                                            <input
+                                                type="range"
+                                                min="0"
+                                                max="100"
+                                                step="1"
+                                                x-model.number="typeWeight"
+                                                @input.debounce.250ms="$wire.set('typeWeights.{{ $typeId }}', Number(typeWeight) || 0)"
+                                                class="min-w-0 flex-1 accent-slate-900"
+                                                aria-label="Art-Gewicht {{ $type['name'] }}"
+                                            >
+                                            <button type="button" @click="setTypeWeight(typeWeight + 1)" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-600 hover:bg-slate-100" aria-label="Art-Gewicht erhoehen">
+                                                <i class="fal fa-plus text-xs"></i>
+                                            </button>
+                                            <label class="flex w-24 shrink-0 items-center rounded-md border border-slate-200 bg-white px-2 py-1.5">
+                                                <span class="sr-only">Art-Gewicht {{ $type['name'] }}</span>
+                                                <input
+                                                    id="type-weight-{{ $typeId }}"
+                                                    type="number"
+                                                    min="0"
+                                                    max="10000"
+                                                    step="0.1"
+                                                    x-model.number="typeWeight"
+                                                    @change="setTypeWeight(typeWeight)"
+                                                    class="block w-full border-0 bg-transparent p-0 text-right text-sm font-semibold text-slate-900 focus:ring-0"
+                                                >
+                                            </label>
+                                        </div>
                                     </div>
-
-                                    <input
-                                        type="range"
-                                        min="0"
-                                        max="100"
-                                        step="1"
-                                        x-model.number="typeWeight"
-                                        wire:model.live.debounce.250ms="typeWeights.{{ $typeId }}"
-                                        class="w-full accent-slate-900"
-                                        aria-label="Art-Gewicht {{ $type['name'] }}"
-                                    >
                                 </div>
 
                                 @if(count($type['subtypes']) > 0)
@@ -698,32 +721,53 @@
                                         <div class="mt-3 overflow-hidden rounded-md border border-slate-200">
                                             @foreach($type['subtypes'] as $subtypeId => $subtypeName)
                                                 @php($subtypeWeight = (float) ($subtypeWeights[$typeId][$subtypeId] ?? 0))
-                                                <div x-data="{ subtypeWeight: @js($subtypeWeight) }" class="grid gap-3 border-b border-slate-100 bg-slate-50 px-3 py-3 last:border-b-0 md:grid-cols-[minmax(0,1fr)_140px_220px] md:items-center">
+                                                <div
+                                                    x-data="{
+                                                        subtypeWeight: @js($subtypeWeight),
+                                                        setSubtypeWeight(value) {
+                                                            this.subtypeWeight = Math.max(0, Math.min(10000, Number(value) || 0));
+                                                            $wire.set('subtypeWeights.{{ $typeId }}.{{ $subtypeId }}', this.subtypeWeight);
+                                                        }
+                                                    }"
+                                                    class="grid gap-3 border-b border-slate-100 bg-slate-50 px-3 py-3 last:border-b-0 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-center"
+                                                >
                                                     <div class="min-w-0">
                                                         <div class="truncate text-sm font-medium text-slate-800">#{{ $subtypeId }} {{ $subtypeName }}</div>
                                                         <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-white">
                                                             <div class="h-full rounded-full bg-blue-500" :style="'width: ' + Math.max(2, Math.min(100, Number(subtypeWeight) || 0)) + '%'"></div>
                                                         </div>
                                                     </div>
-                                                    <input
-                                                        id="subtype-weight-{{ $typeId }}-{{ $subtypeId }}"
-                                                        type="number"
-                                                        min="0"
-                                                        step="0.1"
-                                                        x-model.number="subtypeWeight"
-                                                        wire:model.live.debounce.300ms="subtypeWeights.{{ $typeId }}.{{ $subtypeId }}"
-                                                        class="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                                                    >
-                                                    <input
-                                                        type="range"
-                                                        min="0"
-                                                        max="100"
-                                                        step="1"
-                                                        x-model.number="subtypeWeight"
-                                                        wire:model.live.debounce.250ms="subtypeWeights.{{ $typeId }}.{{ $subtypeId }}"
-                                                        class="w-full accent-blue-600"
-                                                        aria-label="Unterart-Gewicht {{ $subtypeName }}"
-                                                    >
+                                                    <div class="flex items-center gap-2 rounded-md border border-slate-200 bg-white p-2">
+                                                        <button type="button" @click="setSubtypeWeight(subtypeWeight - 1)" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-600 hover:bg-slate-100" aria-label="Unterart-Gewicht reduzieren">
+                                                            <i class="fal fa-minus text-xs"></i>
+                                                        </button>
+                                                        <input
+                                                            type="range"
+                                                            min="0"
+                                                            max="100"
+                                                            step="1"
+                                                            x-model.number="subtypeWeight"
+                                                            @input.debounce.250ms="$wire.set('subtypeWeights.{{ $typeId }}.{{ $subtypeId }}', Number(subtypeWeight) || 0)"
+                                                            class="min-w-0 flex-1 accent-blue-600"
+                                                            aria-label="Unterart-Gewicht {{ $subtypeName }}"
+                                                        >
+                                                        <button type="button" @click="setSubtypeWeight(subtypeWeight + 1)" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-600 hover:bg-slate-100" aria-label="Unterart-Gewicht erhoehen">
+                                                            <i class="fal fa-plus text-xs"></i>
+                                                        </button>
+                                                        <label class="flex w-24 shrink-0 items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5">
+                                                            <span class="sr-only">Unterart-Gewicht {{ $subtypeName }}</span>
+                                                            <input
+                                                                id="subtype-weight-{{ $typeId }}-{{ $subtypeId }}"
+                                                                type="number"
+                                                                min="0"
+                                                                max="10000"
+                                                                step="0.1"
+                                                                x-model.number="subtypeWeight"
+                                                                @change="setSubtypeWeight(subtypeWeight)"
+                                                                class="block w-full border-0 bg-transparent p-0 text-right text-sm font-semibold text-slate-900 focus:ring-0"
+                                                            >
+                                                        </label>
+                                                    </div>
                                                 </div>
                                             @endforeach
                                         </div>
