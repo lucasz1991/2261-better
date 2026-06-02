@@ -413,54 +413,111 @@ class SyntheticRatingUser extends Model
 
     private static function syntheticEmail(array $persona, string $token, string $domain): string
     {
-        $namePart = (string) ($persona['alias'] ?? $persona['display_name'] ?? 'testperson');
+        $namePart = self::identifierNamePart($persona, '.');
+        $ending = self::identifierEnding($persona, $token, 'email');
 
-        if (($persona['first_name'] ?? null) && ($persona['last_name'] ?? null)) {
-            $namePart = $persona['first_name'].'.'.$persona['last_name'];
-        }
-
-        $namePart = Str::of($namePart)
-            ->ascii()
-            ->lower()
-            ->replaceMatches('/[^a-z0-9]+/', '.')
-            ->trim('.')
-            ->limit(32, '')
-            ->trim('.')
-            ->toString();
-
-        if ($namePart === '') {
-            $namePart = 'testperson';
-        }
-
-        $token = substr(preg_replace('/[^a-z0-9]/', '', strtolower($token)) ?: Str::random(8), 0, 8);
-
-        return "{$namePart}-{$token}@{$domain}";
+        return "{$namePart}{$ending}@{$domain}";
     }
 
     private static function usernameFromPersona(array $persona, string $token): string
     {
-        $namePart = (string) ($persona['display_name'] ?? 'testperson');
+        $username = self::identifierNamePart($persona, '.');
+        $ending = self::identifierEnding($persona, $token, 'username');
+
+        return "{$username}{$ending}";
+    }
+
+    private static function identifierNamePart(array $persona, string $separator): string
+    {
+        $namePart = (string) ($persona['alias'] ?? $persona['display_name'] ?? 'testperson');
 
         if (($persona['first_name'] ?? null) && ($persona['last_name'] ?? null)) {
-            $namePart = $persona['first_name'].'.'.$persona['last_name'];
+            $namePart = $persona['first_name'].$separator.$persona['last_name'];
         }
 
-        $username = Str::of($namePart)
+        $identifier = Str::of($namePart)
             ->ascii()
             ->lower()
-            ->replaceMatches('/[^a-z0-9]+/', '.')
-            ->trim('.')
+            ->replaceMatches('/[^a-z0-9]+/', $separator)
+            ->trim($separator)
             ->limit(32, '')
-            ->trim('.')
+            ->trim($separator)
             ->toString();
 
-        if ($username === '') {
-            $username = 'testperson';
+        return $identifier !== '' ? $identifier : 'testperson';
+    }
+
+    private static function identifierEnding(array $persona, string $token, string $target): string
+    {
+        $separator = self::identifierEndingSeparator($target);
+        $seed = self::identifierTokenSeed($token);
+        $seedShort = substr($seed, 0, 4);
+        $seedLong = substr($seed, 0, 7);
+        $firstInitial = substr(self::identifierSlug((string) ($persona['first_name'] ?? '')), 0, 1);
+        $lastInitial = substr(self::identifierSlug((string) ($persona['last_name'] ?? '')), 0, 1);
+        $initials = ($firstInitial.$lastInitial) ?: substr($seed, 0, 2);
+        $city = self::identifierSlug((string) ($persona['city'] ?? ''));
+        $city = $city !== '' ? substr($city, 0, random_int(4, min(8, max(4, strlen($city))))) : '';
+        $postalArea = preg_replace('/\D+/', '', (string) ($persona['postal_code_area'] ?? '')) ?: '';
+        $customerSinceYear = (int) ($persona['customer_since_year'] ?? 0);
+        $year = $customerSinceYear > 0 ? (string) $customerSinceYear : (string) random_int(2010, (int) now()->format('Y') - 1);
+        $yearShort = substr($year, -2);
+        $number2 = (string) random_int(10, 99);
+        $number3 = (string) random_int(100, 999);
+
+        $patterns = array_filter([
+            $seedShort,
+            $seedLong,
+            $number2,
+            $number3,
+            "{$initials}{$number2}",
+            "{$initials}{$seedShort}",
+            "{$yearShort}{$number2}",
+            "{$year}{$number2}",
+            $postalArea !== '' ? "{$postalArea}{$number2}" : null,
+            $city !== '' ? "{$city}{$number2}" : null,
+            $city !== '' ? "{$city}{$separator}{$seedShort}" : null,
+            "{$initials}{$separator}{$yearShort}{$number2}",
+        ]);
+
+        $ending = (string) $patterns[array_rand($patterns)];
+        $ending = trim($ending, '.-_');
+
+        if ($ending === '') {
+            $ending = $seedShort;
         }
 
-        $token = substr(preg_replace('/[^a-z0-9]/', '', strtolower($token)) ?: Str::random(8), 0, 4);
+        return $separator.$ending;
+    }
 
-        return "{$username}.{$token}";
+    private static function identifierEndingSeparator(string $target): string
+    {
+        $separators = $target === 'username'
+            ? ['.', '.', '_', '', '-']
+            : ['.', '.', '-', '', ''];
+
+        return $separators[array_rand($separators)];
+    }
+
+    private static function identifierTokenSeed(string $token): string
+    {
+        $seed = preg_replace('/[^a-z0-9]/', '', strtolower($token));
+
+        if (! is_string($seed) || strlen($seed) < 7) {
+            $seed = strtolower((string) Str::random(12));
+            $seed = preg_replace('/[^a-z0-9]/', '', $seed) ?: '2261user';
+        }
+
+        return $seed;
+    }
+
+    private static function identifierSlug(string $value): string
+    {
+        return Str::of($value)
+            ->ascii()
+            ->lower()
+            ->replaceMatches('/[^a-z0-9]+/', '')
+            ->toString();
     }
 
     private static function isSynthetic2261Email(string $email): bool
