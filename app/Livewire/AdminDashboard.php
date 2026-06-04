@@ -95,6 +95,7 @@ class AdminDashboard extends Component
             ->whereNull('executed_at')
             ->whereNotNull('scheduled_for')
             ->where('scheduled_for', '<=', now())
+            ->withoutManualOnlyAfterRetract()
             ->whereNotIn('status', [ClaimRating::STATUS_FAILED, ClaimRating::STATUS_PROCESSING])
             ->count();
         $this->preparedRatings = ClaimRating::query()
@@ -114,6 +115,7 @@ class AdminDashboard extends Component
             ->whereNull('executed_at')
             ->whereNotNull('scheduled_for')
             ->where('scheduled_for', '>', now())
+            ->withoutManualOnlyAfterRetract()
             ->whereNotIn('status', [ClaimRating::STATUS_FAILED, ClaimRating::STATUS_PROCESSING])
             ->count();
 
@@ -124,6 +126,7 @@ class AdminDashboard extends Component
             ->whereNull('executed_at')
             ->whereNotNull('scheduled_for')
             ->where('scheduled_for', '>', now())
+            ->withoutManualOnlyAfterRetract()
             ->whereNotIn('status', [ClaimRating::STATUS_FAILED, ClaimRating::STATUS_PROCESSING])
             ->orderBy('scheduled_for')
             ->first();
@@ -160,6 +163,7 @@ class AdminDashboard extends Component
             ->whereNull('executed_at')
             ->whereNotNull('scheduled_for')
             ->where('scheduled_for', '>', now())
+            ->withoutManualOnlyAfterRetract()
             ->whereNotIn('status', [ClaimRating::STATUS_FAILED, ClaimRating::STATUS_PROCESSING])
             ->orderBy('scheduled_for')
             ->limit(5)

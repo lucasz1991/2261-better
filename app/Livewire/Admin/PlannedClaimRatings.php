@@ -115,6 +115,9 @@ class PlannedClaimRatings extends Component
         }
 
         try {
+            $this->releaseManualOnlyAfterRetract($rating);
+            $rating->refresh();
+
             if (! is_array($rating->answers) || $rating->answers === []) {
                 GenerateSyntheticClaimRating::dispatchSync($rating->fresh());
                 $rating->refresh();
@@ -170,6 +173,26 @@ class PlannedClaimRatings extends Component
         }
     }
 
+    private function releaseManualOnlyAfterRetract(ClaimRating $rating): void
+    {
+        if (! $rating->isManualOnlyAfterRetract()) {
+            return;
+        }
+
+        $data = $rating->data ?? [];
+        $data['execution_control'] = array_merge($data['execution_control'] ?? [], [
+            'manual_only_after_retract' => false,
+            'manual_released_at' => now()->toDateTimeString(),
+            'manual_released_by' => static::class,
+        ]);
+
+        $rating->forceFill([
+            'data' => $data,
+            'last_execution_error' => null,
+            'status' => ClaimRating::STATUS_SCHEDULED,
+        ])->saveQuietly();
+    }
+
     public function render()
     {
         $ratings = $this->plannedQuery()
@@ -204,11 +227,13 @@ class PlannedClaimRatings extends Component
             'upcoming' => $query
                 ->whereNull('executed_at')
                 ->where('scheduled_for', '>', now())
+                ->withoutManualOnlyAfterRetract()
                 ->whereNotIn('status', [ClaimRating::STATUS_FAILED, ClaimRating::STATUS_PROCESSING]),
             'due' => $query
                 ->whereNull('executed_at')
                 ->whereNotNull('scheduled_for')
                 ->where('scheduled_for', '<=', now())
+                ->withoutManualOnlyAfterRetract()
                 ->whereNotIn('status', [ClaimRating::STATUS_FAILED, ClaimRating::STATUS_PROCESSING]),
             'processing' => $query->where('status', ClaimRating::STATUS_PROCESSING),
             'executed' => $query->whereNotNull('executed_at'),
@@ -246,6 +271,7 @@ class PlannedClaimRatings extends Component
         $nextRating = (clone $planned)
             ->whereNull('executed_at')
             ->where('scheduled_for', '>', now())
+            ->withoutManualOnlyAfterRetract()
             ->orderBy('scheduled_for')
             ->first();
 
@@ -255,11 +281,13 @@ class PlannedClaimRatings extends Component
                 ->whereNull('executed_at')
                 ->whereNotNull('scheduled_for')
                 ->where('scheduled_for', '<=', now())
+                ->withoutManualOnlyAfterRetract()
                 ->whereNotIn('status', [ClaimRating::STATUS_FAILED, ClaimRating::STATUS_PROCESSING])
                 ->count(),
             'upcoming' => (clone $planned)
                 ->whereNull('executed_at')
                 ->where('scheduled_for', '>', now())
+                ->withoutManualOnlyAfterRetract()
                 ->whereNotIn('status', [ClaimRating::STATUS_FAILED, ClaimRating::STATUS_PROCESSING])
                 ->count(),
             'executed' => (clone $planned)->whereNotNull('executed_at')->count(),

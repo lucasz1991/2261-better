@@ -30,6 +30,7 @@ class RunDueSyntheticClaimRatingsCommand extends Command
             ['Faellige Bewertungen', (string) ($report['due_count'] ?? 0)],
             ['Verarbeitet', (string) ($report['dispatched_count'] ?? 0)],
             ['Vorbereitete ausgefuehrt', (string) ($report['executed_count'] ?? 0)],
+            ['Rueckruf-Sperre uebersprungen', (string) ($report['skipped_manual_only_count'] ?? 0)],
             ['Fehler', (string) ($report['failed_count'] ?? 0)],
             ['Ergebnis', (string) ($report['reason'] ?? '-')],
         ]);
@@ -54,6 +55,24 @@ class RunDueSyntheticClaimRatingsCommand extends Command
                     $item['subtype_id'] ?? '-',
                     $item['insurance_id'] ?? '-',
                     $item['error'] ?? '-',
+                ])->all()
+            );
+        }
+
+        if (! empty($report['skipped'])) {
+            $this->warn('Uebersprungene Bewertungen');
+            $this->table(
+                ['ID', 'Aktion', 'Geplant fuer', 'Typ', 'Untertyp', 'Versicherung'],
+                collect($report['skipped'])->map(fn (array $item): array => [
+                    '#' . ($item['id'] ?? '-'),
+                    match ($item['action'] ?? '') {
+                        'manual_only_after_retract' => 'nach Rueckruf nur manuell',
+                        default => $item['action'] ?? '-',
+                    },
+                    $item['scheduled_for'] ?? '-',
+                    $item['type_id'] ?? '-',
+                    $item['subtype_id'] ?? '-',
+                    $item['insurance_id'] ?? '-',
                 ])->all()
             );
         }

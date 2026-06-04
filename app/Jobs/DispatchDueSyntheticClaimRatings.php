@@ -42,7 +42,9 @@ class DispatchDueSyntheticClaimRatings implements ShouldQueue
             'dispatched_count' => 0,
             'executed_count' => 0,
             'failed_count' => 0,
+            'skipped_manual_only_count' => 0,
             'dispatched' => [],
+            'skipped' => [],
         ];
 
         if ($disabledReason) {
@@ -51,7 +53,7 @@ class DispatchDueSyntheticClaimRatings implements ShouldQueue
             return $report;
         }
 
-        $query = ClaimRating::query()
+        $baseDueQuery = ClaimRating::query()
             ->where('data->synthetic', true)
             ->whereNull('executed_at')
             ->whereNotNull('scheduled_for')
@@ -60,6 +62,12 @@ class DispatchDueSyntheticClaimRatings implements ShouldQueue
                 ClaimRating::STATUS_FAILED,
                 ClaimRating::STATUS_PROCESSING,
             ]);
+
+        $report['skipped_manual_only_count'] = (clone $baseDueQuery)
+            ->where('data->execution_control->manual_only_after_retract', true)
+            ->count();
+
+        $query = (clone $baseDueQuery)->withoutManualOnlyAfterRetract();
 
         $report['due_count'] = (clone $query)->count();
 
@@ -70,6 +78,13 @@ class DispatchDueSyntheticClaimRatings implements ShouldQueue
 
         foreach ($ratings as $rating) {
             try {
+                if ($rating->isManualOnlyAfterRetract()) {
+                    $report['skipped_manual_only_count']++;
+                    $report['skipped'][] = $this->ratingReportItem($rating->fresh(), 'manual_only_after_retract');
+
+                    continue;
+                }
+
                 if ($this->hasPreparedAiPayload($rating)) {
                     $this->markPreparedRatingExecuted($rating);
 

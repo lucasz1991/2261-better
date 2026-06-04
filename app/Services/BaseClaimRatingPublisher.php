@@ -555,6 +555,11 @@ class BaseClaimRatingPublisher
     {
         $data = $rating->data ?? [];
         $data['base_publish']['retracted_at'] = now()->toDateTimeString();
+        $data['execution_control'] = array_merge($data['execution_control'] ?? [], [
+            'manual_only_after_retract' => true,
+            'manual_only_since' => now()->toDateTimeString(),
+            'manual_only_reason' => 'base_retracted',
+        ]);
 
         if ($rating->syntheticUser?->base_user_id) {
             $rating->syntheticUser->markBaseUserRetracted();

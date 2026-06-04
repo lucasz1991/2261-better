@@ -169,6 +169,7 @@
                                 'Faellig' => 'border-amber-200 bg-amber-50 text-amber-700',
                                 'Laeuft' => 'border-blue-200 bg-blue-50 text-blue-700',
                                 'AI vorbereitet' => 'border-cyan-200 bg-cyan-50 text-cyan-700',
+                                'Zurueckgerufen' => 'border-slate-300 bg-slate-100 text-slate-700',
                                 default => 'border-slate-200 bg-slate-50 text-slate-700',
                             };
                             $stateIcon = match ($state) {
@@ -177,6 +178,7 @@
                                 'Faellig' => 'fa-hourglass-end',
                                 'Laeuft' => 'fa-spinner fa-spin',
                                 'AI vorbereitet' => 'fa-wand-magic-sparkles',
+                                'Zurueckgerufen' => 'fa-rotate-left',
                                 default => 'fa-calendar',
                             };
                             $isPrepared = filled(data_get($rating->data, 'ai_generation.generated_at'));
