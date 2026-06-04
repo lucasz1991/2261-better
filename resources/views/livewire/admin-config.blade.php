@@ -657,7 +657,9 @@
                     <div class="overflow-hidden rounded-lg border border-slate-200 bg-white">
                         @foreach($catalog as $typeId => $type)
                             @php($typeWeight = (float) ($typeWeights[$typeId] ?? 0))
+                            @php($subtypesOpen = (bool) ($expandedTypeSubtypes[(int) $typeId] ?? false))
                             <div
+                                wire:key="rating-type-{{ $typeId }}"
                                 x-data="{
                                     typeWeight: @js($typeWeight),
                                     setTypeWeight(value) {
@@ -691,7 +693,7 @@
                                                 max="100"
                                                 step="1"
                                                 x-model.number="typeWeight"
-                                                @input.debounce.250ms="$wire.set('typeWeights.{{ $typeId }}', Number(typeWeight) || 0)"
+                                                @change="setTypeWeight(typeWeight)"
                                                 class="min-w-0 flex-1 accent-slate-900"
                                                 aria-label="Art-Gewicht {{ $type['name'] }}"
                                             >
@@ -716,12 +718,24 @@
                                 </div>
 
                                 @if(count($type['subtypes']) > 0)
-                                    <details class="mt-3">
-                                        <summary class="cursor-pointer text-sm font-medium text-blue-700">Unterarten anzeigen</summary>
+                                    <div class="mt-3">
+                                        <button
+                                            type="button"
+                                            wire:click="toggleTypeSubtypes({{ (int) $typeId }})"
+                                            class="inline-flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100"
+                                            aria-expanded="{{ $subtypesOpen ? 'true' : 'false' }}"
+                                        >
+                                            <i class="fal {{ $subtypesOpen ? 'fa-chevron-up' : 'fa-chevron-down' }} text-xs"></i>
+                                            <span>{{ $subtypesOpen ? 'Unterarten ausblenden' : 'Unterarten anzeigen' }}</span>
+                                            <span class="rounded bg-white/70 px-1.5 py-0.5 text-xs">{{ count($type['subtypes']) }}</span>
+                                        </button>
+
+                                        @if($subtypesOpen)
                                         <div class="mt-3 overflow-hidden rounded-md border border-slate-200">
                                             @foreach($type['subtypes'] as $subtypeId => $subtypeName)
                                                 @php($subtypeWeight = (float) ($subtypeWeights[$typeId][$subtypeId] ?? 0))
                                                 <div
+                                                    wire:key="rating-subtype-{{ $typeId }}-{{ $subtypeId }}"
                                                     x-data="{
                                                         subtypeWeight: @js($subtypeWeight),
                                                         setSubtypeWeight(value) {
@@ -747,7 +761,7 @@
                                                             max="100"
                                                             step="1"
                                                             x-model.number="subtypeWeight"
-                                                            @input.debounce.250ms="$wire.set('subtypeWeights.{{ $typeId }}.{{ $subtypeId }}', Number(subtypeWeight) || 0)"
+                                                            @change="setSubtypeWeight(subtypeWeight)"
                                                             class="min-w-0 flex-1 accent-blue-600"
                                                             aria-label="Unterart-Gewicht {{ $subtypeName }}"
                                                         >
@@ -771,7 +785,8 @@
                                                 </div>
                                             @endforeach
                                         </div>
-                                    </details>
+                                        @endif
+                                    </div>
                                 @endif
                             </div>
                         @endforeach

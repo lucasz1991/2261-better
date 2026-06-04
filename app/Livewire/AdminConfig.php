@@ -32,6 +32,9 @@ class AdminConfig extends Component
     /** @var array<int, array{id: int, name: string}> */
     public array $providerCatalog = [];
 
+    /** @var array<int, bool> */
+    public array $expandedTypeSubtypes = [];
+
     public string $syntheticUserNameMode = 'realistic';
 
     public string $openrouterApiUrl = 'https://openrouter.ai/api/v1/chat/completions';
@@ -221,6 +224,11 @@ class AdminConfig extends Component
         $this->hourWeights = RatingDistributionCatalog::defaultHourWeights();
         $this->scoreWeights = RatingDistributionCatalog::defaultScoreWeights();
         $this->providerWeights = $this->equalProviderWeights();
+    }
+
+    public function toggleTypeSubtypes(int $typeId): void
+    {
+        $this->expandedTypeSubtypes[$typeId] = ! (bool) ($this->expandedTypeSubtypes[$typeId] ?? false);
     }
 
     public function getTypeWeightTotalProperty(): float
