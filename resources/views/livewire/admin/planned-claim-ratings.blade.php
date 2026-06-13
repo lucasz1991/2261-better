@@ -83,6 +83,109 @@
         </div>
     @endif
 
+
+    <section class="w-full min-w-0 rounded-xl border border-blue-200 bg-white p-3 shadow-sm">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+                        <i class="fal fa-sliders"></i>
+                    </span>
+                    <div>
+                        <h2 class="text-base font-semibold text-slate-950">AI-Variationen</h2>
+                        <p class="mt-0.5 text-xs text-slate-500">Steuert neue AI-Vorbereitungen: Regulierungstypen, realistische Mindestdauer und kurz/normal/lang-Mix.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800 lg:max-w-md">
+                <i class="fal fa-info-circle mr-1"></i>
+                Bereits vorbereitete Bewertungen werden nicht automatisch geaendert. Klicke bei bestehenden Eintraegen auf <strong>AI neu</strong>, damit die neuen Werte greifen.
+            </div>
+        </div>
+
+        <form wire:submit.prevent="saveAiVariationSettings" class="mt-4 grid gap-4 xl:grid-cols-3">
+            <div class="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                <h3 class="text-sm font-semibold text-slate-900">Regulierungsdauer</h3>
+                <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                    <label class="block text-xs font-medium text-slate-600">
+                        Mindestdauer Tage
+                        <input type="number" min="7" max="90" wire:model.defer="aiVariationSettings.min_duration_days" class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </label>
+                    <label class="block text-xs font-medium text-slate-600">
+                        Maximaldauer Tage
+                        <input type="number" min="21" max="365" wire:model.defer="aiVariationSettings.max_duration_days" class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </label>
+                    <label class="block text-xs font-medium text-slate-600">
+                        Abschluss mind. vor Termin
+                        <input type="number" min="0" max="30" wire:model.defer="aiVariationSettings.closed_ended_min_offset_days" class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </label>
+                    <label class="block text-xs font-medium text-slate-600">
+                        Abschluss max. vor Termin
+                        <input type="number" min="1" max="120" wire:model.defer="aiVariationSettings.closed_ended_max_offset_days" class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </label>
+                </div>
+            </div>
+
+            <div class="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                <h3 class="text-sm font-semibold text-slate-900">Dauer-Mix Gewichtung</h3>
+                <p class="mt-1 text-xs text-slate-500">Gewichte muessen nicht exakt 100 ergeben; sie werden relativ genutzt.</p>
+                <div class="mt-3 grid gap-3 sm:grid-cols-3">
+                    <label class="block text-xs font-medium text-slate-600">
+                        Kurz
+                        <input type="number" min="0" max="100" wire:model.defer="aiVariationSettings.duration_mix.short" class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </label>
+                    <label class="block text-xs font-medium text-slate-600">
+                        Normal
+                        <input type="number" min="0" max="100" wire:model.defer="aiVariationSettings.duration_mix.normal" class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </label>
+                    <label class="block text-xs font-medium text-slate-600">
+                        Lang
+                        <input type="number" min="0" max="100" wire:model.defer="aiVariationSettings.duration_mix.long" class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </label>
+                </div>
+            </div>
+
+            <div class="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                <h3 class="text-sm font-semibold text-slate-900">Regulierungsarten</h3>
+                <p class="mt-1 text-xs text-slate-500">Gewichtete Verteilung plus optionales Uebersteuern der AI-Antwort.</p>
+                <div class="mt-3 grid gap-3 sm:grid-cols-5 xl:grid-cols-2">
+                    <label class="block text-xs font-medium text-slate-600">
+                        Vollzahlung
+                        <input type="number" min="0" max="100" wire:model.defer="aiVariationSettings.regulation_type_weights.vollzahlung" class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </label>
+                    <label class="block text-xs font-medium text-slate-600">
+                        Teilzahlung
+                        <input type="number" min="0" max="100" wire:model.defer="aiVariationSettings.regulation_type_weights.teilzahlung" class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </label>
+                    <label class="block text-xs font-medium text-slate-600">
+                        Ablehnung
+                        <input type="number" min="0" max="100" wire:model.defer="aiVariationSettings.regulation_type_weights.ablehnung" class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </label>
+                    <label class="block text-xs font-medium text-slate-600">
+                        Ausstehend
+                        <input type="number" min="0" max="100" wire:model.defer="aiVariationSettings.regulation_type_weights.austehend" class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </label>
+                    <label class="block text-xs font-medium text-slate-600 sm:col-span-5 xl:col-span-2">
+                        AI-Uebersteuerung %
+                        <input type="number" min="0" max="100" wire:model.defer="aiVariationSettings.regulation_ai_override_percent" class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </label>
+                </div>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-end gap-2 xl:col-span-3">
+                <button type="button" wire:click="resetAiVariationSettings" wire:confirm="AI-Variationen wirklich auf Standardwerte zuruecksetzen?" class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50">
+                    <i class="fal fa-rotate-left"></i>
+                    Standards
+                </button>
+                <button type="submit" class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-blue-500">
+                    <i class="fal fa-save"></i>
+                    Variationen speichern
+                </button>
+            </div>
+        </form>
+    </section>
+
     <section class="w-full min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div class="border-b border-slate-200 bg-slate-50/80 px-3 py-3 sm:px-4">
             <div class="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(300px,460px)] lg:items-center">

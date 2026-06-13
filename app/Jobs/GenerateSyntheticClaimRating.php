@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\ClaimRating;
+use App\Models\Setting;
 use App\Models\SyntheticRatingUser;
 use App\Services\AiConnection;
 use App\Services\BaseClaimRatingPublisher;
@@ -21,6 +22,9 @@ class GenerateSyntheticClaimRating implements ShouldQueue
     use InteractsWithQueue;
     use Queueable;
     use SerializesModels;
+
+    private const AI_VARIATION_SETTING_TYPE = 'claim_rating_ai';
+    private const AI_VARIATION_SETTING_KEY = 'variation_settings';
 
     public int $tries = 2;
     public int $timeout = 240;
@@ -135,6 +139,8 @@ Diese Daten duerfen nicht wie echte Kundenerfahrungen behandelt oder veroeffentl
 Erzeuge plausible, sachliche Formularantworten ohne personenbezogene Daten, ohne reale Fallnummern und ohne extreme oder diffamierende Behauptungen.
 Nutze die uebergebenen Versicherungs- und Formular-Metadaten.
 Wenn ein Ziel-Score-Profil uebergeben wird, sollen Tonalitaet, Regulierungsergebnis, Dauer und Detailantworten dazu passen.
+Nutze die uebergebenen AI-Variationsvorgaben: variiere Regulierungstypen gemaess Gewichtung und waehle realistische Schadenregulierungsdauern.
+Die Dauer darf nicht unrealistisch kurz sein; nutze mindestens die vorgegebene Mindestdauer und mische kurze, normale und lange Verlaeufe passend zum Versicherungskontext.
 Alle Texte muessen auf Deutsch sein.
 
 Antwort ausschliesslich als JSON:
@@ -154,7 +160,8 @@ Antwort ausschliesslich als JSON:
     },
     "selectedDates": {
       "started_at": "01.04.2026",
-      "ended_at": "20.04.2026"
+      "ended_at": "20.04.2026",
+      "duration_days": 19
     },
     "variable": {
       "question_title": "Antwort passend zum Fragetyp"
@@ -192,6 +199,7 @@ TEXT;
             'observed_generation_profile' => $generationProfile,
             'questionnaire_snapshot' => $this->variableQuestions($baseContext),
             'allowed_regulation_types' => ['vollzahlung', 'teilzahlung', 'ablehnung', 'austehend'],
+            'ai_variation_settings' => $this->variationSettings(),
         ];
     }
 
@@ -241,7 +249,7 @@ TEXT;
      */
     private function normalizeAnswers(array $aiAnswers, array $baseContext): array
     {
-        $regulationType = $this->normalizeRegulationType($aiAnswers['regulationType'] ?? null);
+        $regulationType = $this->normalizeRegulationType($aiAnswers['regulationType'] ?? null, $this->variationSettings());
         $closed = $regulationType !== 'austehend';
         $dates = $this->normalizeDates($aiAnswers['selectedDates'] ?? [], $closed);
 
@@ -271,13 +279,22 @@ TEXT;
         return $answers;
     }
 
-    private function normalizeRegulationType(mixed $value): string
+    private function normalizeRegulationType(mixed $value, array $settings): string
     {
-        $value = strtolower((string) $value);
+        $value = strtolower(trim((string) $value));
+        $allowed = ['vollzahlung', 'teilzahlung', 'ablehnung', 'austehend'];
+        $isAllowed = in_array($value, $allowed, true);
+        $overridePercent = max(0, min(100, (int) ($settings['regulation_ai_override_percent'] ?? 20)));
 
-        return in_array($value, ['vollzahlung', 'teilzahlung', 'ablehnung', 'austehend'], true)
-            ? $value
-            : 'teilzahlung';
+        if (! $isAllowed) {
+            return $this->weightedRegulationType($settings);
+        }
+
+        if ($overridePercent > 0 && random_int(1, 100) <= $overridePercent) {
+            return $this->weightedRegulationType($settings);
+        }
+
+        return $value;
     }
 
     /**
@@ -286,20 +303,182 @@ TEXT;
     private function normalizeDates(mixed $value, bool $closed): array
     {
         $value = is_array($value) ? $value : [];
-        $averageDays = (int) ($this->claimRating->data['base_context']['insurance_subtype']['average_rating_speed'] ?? 30);
-        $durationDays = max(3, min(180, (int) ($value['duration_days'] ?? $averageDays + random_int(-7, 14))));
+        $settings = $this->variationSettings();
+        $minDays = (int) ($settings['min_duration_days'] ?? 14);
+        $maxDays = max($minDays + 7, (int) ($settings['max_duration_days'] ?? 210));
+        $averageDays = max($minDays, (int) ($this->claimRating->data['base_context']['insurance_subtype']['average_rating_speed'] ?? 45));
+
+        $durationDays = isset($value['duration_days']) && is_numeric($value['duration_days'])
+            ? (int) $value['duration_days']
+            : $this->realisticDurationDays($averageDays, $settings);
+        $durationDays = max($minDays, min($maxDays, $durationDays));
+
         $scheduledFor = $this->claimRating->scheduled_for
             ? CarbonImmutable::instance($this->claimRating->scheduled_for)
             : CarbonImmutable::instance(now());
-        $endedAt = $closed
-            ? $scheduledFor->subDays(random_int(3, 45))
-            : null;
+
+        $endedAt = null;
+
+        if ($closed) {
+            $offsetMin = max(0, (int) ($settings['closed_ended_min_offset_days'] ?? 3));
+            $offsetMax = max($offsetMin + 1, (int) ($settings['closed_ended_max_offset_days'] ?? 60));
+            $endedAt = $scheduledFor->subDays(random_int($offsetMin, $offsetMax));
+        }
+
         $startedAt = ($endedAt ?: $scheduledFor)->subDays($durationDays);
 
         return [
             'started_at' => $startedAt->format('d.m.Y'),
             'ended_at' => $endedAt?->format('d.m.Y'),
         ];
+    }
+
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function variationSettings(): array
+    {
+        $defaults = [
+            'min_duration_days' => 14,
+            'max_duration_days' => 210,
+            'closed_ended_min_offset_days' => 3,
+            'closed_ended_max_offset_days' => 60,
+            'duration_mix' => [
+                'short' => 20,
+                'normal' => 60,
+                'long' => 20,
+            ],
+            'regulation_type_weights' => [
+                'vollzahlung' => 28,
+                'teilzahlung' => 42,
+                'ablehnung' => 20,
+                'austehend' => 10,
+            ],
+            'regulation_ai_override_percent' => 20,
+        ];
+
+        $stored = Setting::getValue(self::AI_VARIATION_SETTING_TYPE, self::AI_VARIATION_SETTING_KEY);
+        $stored = is_array($stored) ? $stored : [];
+        $durationMix = is_array($stored['duration_mix'] ?? null) ? $stored['duration_mix'] : [];
+        $regulationWeights = is_array($stored['regulation_type_weights'] ?? null) ? $stored['regulation_type_weights'] : [];
+
+        $minDuration = $this->boundedInt($stored['min_duration_days'] ?? $defaults['min_duration_days'], 7, 90, $defaults['min_duration_days']);
+        $maxDuration = $this->boundedInt($stored['max_duration_days'] ?? $defaults['max_duration_days'], $minDuration + 14, 365, $defaults['max_duration_days']);
+        $endedMinOffset = $this->boundedInt($stored['closed_ended_min_offset_days'] ?? $defaults['closed_ended_min_offset_days'], 0, 30, $defaults['closed_ended_min_offset_days']);
+        $endedMaxOffset = $this->boundedInt($stored['closed_ended_max_offset_days'] ?? $defaults['closed_ended_max_offset_days'], $endedMinOffset + 1, 120, $defaults['closed_ended_max_offset_days']);
+
+        return [
+            'min_duration_days' => $minDuration,
+            'max_duration_days' => $maxDuration,
+            'closed_ended_min_offset_days' => $endedMinOffset,
+            'closed_ended_max_offset_days' => $endedMaxOffset,
+            'duration_mix' => [
+                'short' => $this->boundedInt($durationMix['short'] ?? $defaults['duration_mix']['short'], 0, 100, $defaults['duration_mix']['short']),
+                'normal' => $this->boundedInt($durationMix['normal'] ?? $defaults['duration_mix']['normal'], 0, 100, $defaults['duration_mix']['normal']),
+                'long' => $this->boundedInt($durationMix['long'] ?? $defaults['duration_mix']['long'], 0, 100, $defaults['duration_mix']['long']),
+            ],
+            'regulation_type_weights' => [
+                'vollzahlung' => $this->boundedInt($regulationWeights['vollzahlung'] ?? $defaults['regulation_type_weights']['vollzahlung'], 0, 100, $defaults['regulation_type_weights']['vollzahlung']),
+                'teilzahlung' => $this->boundedInt($regulationWeights['teilzahlung'] ?? $defaults['regulation_type_weights']['teilzahlung'], 0, 100, $defaults['regulation_type_weights']['teilzahlung']),
+                'ablehnung' => $this->boundedInt($regulationWeights['ablehnung'] ?? $defaults['regulation_type_weights']['ablehnung'], 0, 100, $defaults['regulation_type_weights']['ablehnung']),
+                'austehend' => $this->boundedInt($regulationWeights['austehend'] ?? $defaults['regulation_type_weights']['austehend'], 0, 100, $defaults['regulation_type_weights']['austehend']),
+            ],
+            'regulation_ai_override_percent' => $this->boundedInt($stored['regulation_ai_override_percent'] ?? $defaults['regulation_ai_override_percent'], 0, 100, $defaults['regulation_ai_override_percent']),
+        ];
+    }
+
+    private function boundedInt(mixed $value, int $min, int $max, int $fallback): int
+    {
+        if (! is_numeric($value)) {
+            return $fallback;
+        }
+
+        return max($min, min($max, (int) $value));
+    }
+
+    /**
+     * @param array<string, mixed> $settings
+     */
+    private function weightedRegulationType(array $settings): string
+    {
+        $weights = is_array($settings['regulation_type_weights'] ?? null) ? $settings['regulation_type_weights'] : [];
+        $allowed = ['vollzahlung', 'teilzahlung', 'ablehnung', 'austehend'];
+        $total = 0;
+
+        foreach ($allowed as $type) {
+            $total += max(0, (int) ($weights[$type] ?? 0));
+        }
+
+        if ($total <= 0) {
+            return 'teilzahlung';
+        }
+
+        $pick = random_int(1, $total);
+        $running = 0;
+
+        foreach ($allowed as $type) {
+            $running += max(0, (int) ($weights[$type] ?? 0));
+
+            if ($pick <= $running) {
+                return $type;
+            }
+        }
+
+        return 'teilzahlung';
+    }
+
+    /**
+     * @param array<string, mixed> $settings
+     */
+    private function realisticDurationDays(int $averageDays, array $settings): int
+    {
+        $minDays = (int) ($settings['min_duration_days'] ?? 14);
+        $maxDays = max($minDays + 7, (int) ($settings['max_duration_days'] ?? 210));
+        $mix = is_array($settings['duration_mix'] ?? null) ? $settings['duration_mix'] : [];
+        $bucket = $this->weightedDurationBucket($mix);
+        $averageDays = max($minDays, $averageDays);
+
+        [$minFactor, $maxFactor] = match ($bucket) {
+            'short' => [0.75, 1.05],
+            'long' => [1.45, 3.00],
+            default => [0.95, 1.60],
+        };
+
+        $low = max($minDays, (int) floor($averageDays * $minFactor));
+        $high = min($maxDays, max($low + 1, (int) ceil($averageDays * $maxFactor)));
+
+        return random_int($low, $high);
+    }
+
+    /**
+     * @param array<string, mixed> $mix
+     */
+    private function weightedDurationBucket(array $mix): string
+    {
+        $weights = [
+            'short' => max(0, (int) ($mix['short'] ?? 20)),
+            'normal' => max(0, (int) ($mix['normal'] ?? 60)),
+            'long' => max(0, (int) ($mix['long'] ?? 20)),
+        ];
+        $total = array_sum($weights);
+
+        if ($total <= 0) {
+            return 'normal';
+        }
+
+        $pick = random_int(1, $total);
+        $running = 0;
+
+        foreach ($weights as $bucket => $weight) {
+            $running += $weight;
+
+            if ($pick <= $running) {
+                return $bucket;
+            }
+        }
+
+        return 'normal';
     }
 
     /**

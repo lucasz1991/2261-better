@@ -5,6 +5,7 @@ namespace App\Livewire\Admin;
 use App\Jobs\GenerateSyntheticClaimRating;
 use App\Livewire\Admin\Concerns\ShowsClaimRatingModal;
 use App\Models\ClaimRating;
+use App\Models\Setting;
 use App\Services\BaseClaimRatingPublisher;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Gate;
@@ -17,10 +18,14 @@ class PlannedClaimRatings extends Component
     use WithPagination;
     use ShowsClaimRatingModal;
 
+    private const AI_VARIATION_SETTING_TYPE = 'claim_rating_ai';
+    private const AI_VARIATION_SETTING_KEY = 'variation_settings';
+
     public string $search = '';
     public string $executionFilter = 'all';
     public string $sortField = 'scheduled_for';
     public string $sortDirection = 'asc';
+    public array $aiVariationSettings = [];
 
     protected array $queryString = [
         'search' => ['except' => ''],
@@ -30,6 +35,8 @@ class PlannedClaimRatings extends Component
     public function mount(): void
     {
         Gate::authorize('ratings.view');
+
+        $this->aiVariationSettings = $this->storedAiVariationSettings();
     }
 
     public function updatedSearch(): void
@@ -193,6 +200,112 @@ class PlannedClaimRatings extends Component
         ])->saveQuietly();
     }
 
+
+    public function saveAiVariationSettings(): void
+    {
+        Gate::authorize('ratings.view');
+
+        $settings = $this->normalizedAiVariationSettings($this->aiVariationSettings);
+
+        Setting::setValue(self::AI_VARIATION_SETTING_TYPE, self::AI_VARIATION_SETTING_KEY, $settings);
+
+        $this->aiVariationSettings = $settings;
+
+        session()->flash('success', 'AI-Variationen wurden gespeichert. Neue AI-Vorbereitungen nutzen diese Werte.');
+    }
+
+    public function resetAiVariationSettings(): void
+    {
+        Gate::authorize('ratings.view');
+
+        $settings = $this->aiVariationDefaults();
+
+        Setting::setValue(self::AI_VARIATION_SETTING_TYPE, self::AI_VARIATION_SETTING_KEY, $settings);
+
+        $this->aiVariationSettings = $settings;
+
+        session()->flash('success', 'AI-Variationen wurden auf realistische Standardwerte zurueckgesetzt.');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function storedAiVariationSettings(): array
+    {
+        $stored = Setting::getValue(self::AI_VARIATION_SETTING_TYPE, self::AI_VARIATION_SETTING_KEY);
+
+        return $this->normalizedAiVariationSettings(is_array($stored) ? $stored : []);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function aiVariationDefaults(): array
+    {
+        return [
+            'min_duration_days' => 14,
+            'max_duration_days' => 210,
+            'closed_ended_min_offset_days' => 3,
+            'closed_ended_max_offset_days' => 60,
+            'duration_mix' => [
+                'short' => 20,
+                'normal' => 60,
+                'long' => 20,
+            ],
+            'regulation_type_weights' => [
+                'vollzahlung' => 28,
+                'teilzahlung' => 42,
+                'ablehnung' => 20,
+                'austehend' => 10,
+            ],
+            'regulation_ai_override_percent' => 20,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $settings
+     * @return array<string, mixed>
+     */
+    private function normalizedAiVariationSettings(array $settings): array
+    {
+        $defaults = $this->aiVariationDefaults();
+        $durationMix = is_array($settings['duration_mix'] ?? null) ? $settings['duration_mix'] : [];
+        $regulationWeights = is_array($settings['regulation_type_weights'] ?? null) ? $settings['regulation_type_weights'] : [];
+
+        $minDuration = $this->boundedInt($settings['min_duration_days'] ?? $defaults['min_duration_days'], 7, 90, $defaults['min_duration_days']);
+        $maxDuration = $this->boundedInt($settings['max_duration_days'] ?? $defaults['max_duration_days'], $minDuration + 14, 365, $defaults['max_duration_days']);
+        $endedMinOffset = $this->boundedInt($settings['closed_ended_min_offset_days'] ?? $defaults['closed_ended_min_offset_days'], 0, 30, $defaults['closed_ended_min_offset_days']);
+        $endedMaxOffset = $this->boundedInt($settings['closed_ended_max_offset_days'] ?? $defaults['closed_ended_max_offset_days'], $endedMinOffset + 1, 120, $defaults['closed_ended_max_offset_days']);
+
+        return [
+            'min_duration_days' => $minDuration,
+            'max_duration_days' => $maxDuration,
+            'closed_ended_min_offset_days' => $endedMinOffset,
+            'closed_ended_max_offset_days' => $endedMaxOffset,
+            'duration_mix' => [
+                'short' => $this->boundedInt($durationMix['short'] ?? $defaults['duration_mix']['short'], 0, 100, $defaults['duration_mix']['short']),
+                'normal' => $this->boundedInt($durationMix['normal'] ?? $defaults['duration_mix']['normal'], 0, 100, $defaults['duration_mix']['normal']),
+                'long' => $this->boundedInt($durationMix['long'] ?? $defaults['duration_mix']['long'], 0, 100, $defaults['duration_mix']['long']),
+            ],
+            'regulation_type_weights' => [
+                'vollzahlung' => $this->boundedInt($regulationWeights['vollzahlung'] ?? $defaults['regulation_type_weights']['vollzahlung'], 0, 100, $defaults['regulation_type_weights']['vollzahlung']),
+                'teilzahlung' => $this->boundedInt($regulationWeights['teilzahlung'] ?? $defaults['regulation_type_weights']['teilzahlung'], 0, 100, $defaults['regulation_type_weights']['teilzahlung']),
+                'ablehnung' => $this->boundedInt($regulationWeights['ablehnung'] ?? $defaults['regulation_type_weights']['ablehnung'], 0, 100, $defaults['regulation_type_weights']['ablehnung']),
+                'austehend' => $this->boundedInt($regulationWeights['austehend'] ?? $defaults['regulation_type_weights']['austehend'], 0, 100, $defaults['regulation_type_weights']['austehend']),
+            ],
+            'regulation_ai_override_percent' => $this->boundedInt($settings['regulation_ai_override_percent'] ?? $defaults['regulation_ai_override_percent'], 0, 100, $defaults['regulation_ai_override_percent']),
+        ];
+    }
+
+    private function boundedInt(mixed $value, int $min, int $max, int $fallback): int
+    {
+        if (! is_numeric($value)) {
+            return $fallback;
+        }
+
+        return max($min, min($max, (int) $value));
+    }
+
     public function render()
     {
         $ratings = $this->plannedQuery()
@@ -206,6 +319,7 @@ class PlannedClaimRatings extends Component
             'stats' => $this->stats(),
             'filters' => $this->filters(),
             'selectedRating' => $this->selectedRating(),
+            'aiVariationDefaults' => $this->aiVariationDefaults(),
         ])->layout('layouts.master');
     }
 
