@@ -102,13 +102,30 @@ trait ShowsClaimRatingModal
         ])->saveQuietly();
 
         $syntheticUser = $rating->syntheticUser ?: SyntheticRatingUser::createForClaimRating($rating);
+        $userName = trim($this->editUserName);
+        $userFirstName = trim($this->editUserFirstName);
+        $userLastName = trim($this->editUserLastName);
+        $userUsername = trim($this->editUserUsername) ?: $userName;
+        $userEmail = trim($this->editUserEmail);
+        $displayName = trim($userFirstName.' '.$userLastName) ?: $userName;
+        $persona = is_array($userData['persona'] ?? null) ? $userData['persona'] : [];
+        $persona['first_name'] = $userFirstName ?: null;
+        $persona['last_name'] = $userLastName ?: null;
+        $persona['display_name'] = $displayName;
+        $userData['persona'] = $persona;
+        $manualEdit = is_array($userData['manual_edit'] ?? null) ? $userData['manual_edit'] : [];
+        $userData['manual_edit'] = array_merge($manualEdit, [
+            'edited_at' => now()->toDateTimeString(),
+            'preserve_for_ai_generation' => true,
+        ]);
+
         $syntheticUser->forceFill([
-            'name' => trim($this->editUserName),
-            'first_name' => trim($this->editUserFirstName) ?: null,
-            'last_name' => trim($this->editUserLastName) ?: null,
-            'username' => trim($this->editUserUsername) ?: trim($this->editUserName),
-            'email' => trim($this->editUserEmail),
-            'email_domain' => $this->domainFromEmail($this->editUserEmail) ?: $syntheticUser->email_domain,
+            'name' => $userName,
+            'first_name' => $userFirstName ?: null,
+            'last_name' => $userLastName ?: null,
+            'username' => $userUsername,
+            'email' => $userEmail,
+            'email_domain' => $this->domainFromEmail($userEmail) ?: $syntheticUser->email_domain,
             'status' => $this->editUserStatus,
             'email_verified_at' => trim($this->editUserEmailVerifiedAt) !== ''
                 ? \Carbon\Carbon::parse($this->editUserEmailVerifiedAt)

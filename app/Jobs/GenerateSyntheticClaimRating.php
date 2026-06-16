@@ -66,9 +66,7 @@ class GenerateSyntheticClaimRating implements ShouldQueue
                 throw new \RuntimeException('Missing base context for synthetic rating generation.');
             }
 
-            $basePublisher->resetSyntheticUserForNewAiRun($this->claimRating);
-            SyntheticRatingUser::createForClaimRating($this->claimRating);
-            $this->claimRating->refresh();
+            $this->ensureSyntheticUserForAiRun();
 
             $payload = $aiConnection->generateSyntheticClaimRatingPayload([
                 'trainContent' => $this->generationPrompt(),
@@ -128,6 +126,22 @@ class GenerateSyntheticClaimRating implements ShouldQueue
 
             throw $exception;
         }
+    }
+
+    private function ensureSyntheticUserForAiRun(): void
+    {
+        $syntheticUser = SyntheticRatingUser::ensureForClaimRating($this->claimRating);
+        $this->claimRating->refresh();
+
+        $data = $this->claimRating->data ?? [];
+        $data['planning']['synthetic_user_profile'] = $syntheticUser->fresh()->publicProfile();
+
+        $this->claimRating->forceFill([
+            'synthetic_rating_user_id' => $syntheticUser->id,
+            'data' => $data,
+        ])->saveQuietly();
+
+        $this->claimRating->refresh();
     }
 
     private function generationPrompt(): string

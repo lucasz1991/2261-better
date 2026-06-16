@@ -31,6 +31,9 @@ class AdminConfig extends Component
     /** @var array<int, array{id: int, name: string}> */
     public array $providerCatalog = [];
 
+    /** @var array<int, array{name: string, subtypes: array<int, string>}> */
+    public array $ratingCatalog = [];
+
     /** @var array<int, bool> */
     public array $expandedTypeSubtypes = [];
 
@@ -68,12 +71,6 @@ class AdminConfig extends Component
     {
         $ratingSettings = $this->storedSettings();
 
-        $this->dailyTarget = (int) ($ratingSettings['daily_target'] ?? 10);
-        $this->typeWeights = $this->mergeTypeWeights($ratingSettings['type_weights'] ?? []);
-        $this->subtypeWeights = $this->mergeSubtypeWeights($ratingSettings['subtype_weights'] ?? []);
-        $this->hourWeights = $this->mergeHourWeights($ratingSettings['hour_weights'] ?? []);
-        $this->syntheticUserNameMode = 'realistic';
-
         $openrouterSettings = Setting::getValue('openrouter', 'config') ?? [];
         $openrouterSettings = is_array($openrouterSettings) ? $openrouterSettings : [];
 
@@ -90,8 +87,16 @@ class AdminConfig extends Component
         $this->dbDatabase = (string) ($dbSettings['database'] ?? env('ANALYTICS_DB_DATABASE', 'regulierungs-check'));
         $this->dbUsername = (string) ($dbSettings['username'] ?? env('ANALYTICS_DB_USERNAME', env('DB_USERNAME', 'root')));
         $this->dbPassword = (string) ($dbSettings['password'] ?? env('ANALYTICS_DB_PASSWORD', ''));
-        $this->scoreWeights = $this->mergeScoreWeights($ratingSettings['score_weights'] ?? []);
+
         $this->providerCatalog = $this->loadProviderCatalog();
+        $this->ratingCatalog = $this->loadRatingCatalog();
+
+        $this->dailyTarget = (int) ($ratingSettings['daily_target'] ?? 10);
+        $this->typeWeights = $this->mergeTypeWeights($ratingSettings['type_weights'] ?? []);
+        $this->subtypeWeights = $this->mergeSubtypeWeights($ratingSettings['subtype_weights'] ?? []);
+        $this->hourWeights = $this->mergeHourWeights($ratingSettings['hour_weights'] ?? []);
+        $this->syntheticUserNameMode = 'realistic';
+        $this->scoreWeights = $this->mergeScoreWeights($ratingSettings['score_weights'] ?? []);
         $this->providerWeights = $this->mergeProviderWeights($ratingSettings['provider_weights'] ?? []);
 
         $formFillSettings = Setting::getValue('form_filling', 'config') ?? [];
@@ -217,8 +222,9 @@ class AdminConfig extends Component
 
     public function resetDistribution(): void
     {
-        $this->typeWeights = RatingDistributionCatalog::defaultTypeWeights();
-        $this->subtypeWeights = RatingDistributionCatalog::defaultSubtypeWeights();
+        $this->ratingCatalog = $this->loadRatingCatalog();
+        $this->typeWeights = $this->defaultTypeWeightsForCatalog();
+        $this->subtypeWeights = $this->defaultSubtypeWeightsForCatalog();
         $this->hourWeights = RatingDistributionCatalog::defaultHourWeights();
         $this->scoreWeights = RatingDistributionCatalog::defaultScoreWeights();
         $this->providerWeights = $this->equalProviderWeights();
@@ -322,8 +328,12 @@ class AdminConfig extends Component
 
     public function render()
     {
+        if ($this->ratingCatalog === []) {
+            $this->ratingCatalog = $this->loadRatingCatalog();
+        }
+
         return view('livewire.admin-config', [
-            'catalog' => RatingDistributionCatalog::types(),
+            'catalog' => $this->ratingCatalog,
             'scoreBuckets' => RatingDistributionCatalog::scoreBuckets(),
             'formattedScoreBuckets' => $this->formattedScoreBuckets,
         ])->layout('layouts.master');
@@ -486,12 +496,98 @@ class AdminConfig extends Component
     }
 
     /**
+     * @return array<int, array{name: string, subtypes: array<int, string>}>
+     */
+    private function loadRatingCatalog(): array
+    {
+        try {
+            $connection = $this->configureAnalyticsConnection();
+            $rows = DB::connection($connection)
+                ->table('insurance_type_insurance_subtype as pivot')
+                ->join('insurance_types as types', 'types.id', '=', 'pivot.insurance_type_id')
+                ->join('insurance_subtypes as subtypes', 'subtypes.id', '=', 'pivot.insurance_subtype_id')
+                ->where('types.is_active', true)
+                ->where('subtypes.is_active', true)
+                ->orderBy('types.name')
+                ->orderBy('subtypes.name')
+                ->get([
+                    'types.id as type_id',
+                    'types.name as type_name',
+                    'subtypes.id as subtype_id',
+                    'subtypes.name as subtype_name',
+                ]);
+
+            $catalog = [];
+
+            foreach ($rows as $row) {
+                $typeId = (int) $row->type_id;
+                $subtypeId = (int) $row->subtype_id;
+
+                if (! isset($catalog[$typeId])) {
+                    $catalog[$typeId] = [
+                        'name' => (string) $row->type_name,
+                        'subtypes' => [],
+                    ];
+                }
+
+                $catalog[$typeId]['subtypes'][$subtypeId] = (string) $row->subtype_name;
+            }
+
+            return $catalog !== [] ? $catalog : RatingDistributionCatalog::types();
+        } catch (\Throwable $exception) {
+            Log::warning('Could not load rating catalog from base database.', [
+                'message' => $exception->getMessage(),
+            ]);
+
+            return RatingDistributionCatalog::types();
+        }
+    }
+
+    /**
+     * @return array<int, float>
+     */
+    private function defaultTypeWeightsForCatalog(): array
+    {
+        $weights = [];
+
+        foreach ($this->ratingCatalogForWeights() as $typeId => $type) {
+            $weights[(int) $typeId] = count($type['subtypes'] ?? []) > 0 ? 1.0 : 0.0;
+        }
+
+        return $weights;
+    }
+
+    /**
+     * @return array<int, array<int, float>>
+     */
+    private function defaultSubtypeWeightsForCatalog(): array
+    {
+        $weights = [];
+
+        foreach ($this->ratingCatalogForWeights() as $typeId => $type) {
+            foreach (($type['subtypes'] ?? []) as $subtypeId => $name) {
+                $weights[(int) $typeId][(int) $subtypeId] = 1.0;
+            }
+        }
+
+        return $weights;
+    }
+
+    /**
+     * @return array<int, array{name: string, subtypes: array<int, string>}>
+     */
+    private function ratingCatalogForWeights(): array
+    {
+        return $this->ratingCatalog !== [] ? $this->ratingCatalog : RatingDistributionCatalog::types();
+    }
+
+    /**
      * @param array<int|string, mixed> $storedWeights
      * @return array<int, float>
      */
     private function mergeTypeWeights(array $storedWeights): array
     {
-        $weights = RatingDistributionCatalog::defaultTypeWeights();
+        $weights = $this->defaultTypeWeightsForCatalog();
 
         foreach ($weights as $typeId => $default) {
             $weights[$typeId] = $this->toWeight($storedWeights[$typeId] ?? $storedWeights[(string) $typeId] ?? $default);
@@ -506,7 +602,7 @@ class AdminConfig extends Component
      */
     private function mergeSubtypeWeights(array $storedWeights): array
     {
-        $weights = RatingDistributionCatalog::defaultSubtypeWeights();
+        $weights = $this->defaultSubtypeWeightsForCatalog();
 
         foreach ($weights as $typeId => $subtypes) {
             $typeStoredWeights = $storedWeights[$typeId] ?? $storedWeights[(string) $typeId] ?? [];

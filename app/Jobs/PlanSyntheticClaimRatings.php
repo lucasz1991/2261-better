@@ -226,7 +226,10 @@ class PlanSyntheticClaimRatings implements ShouldQueue
             $typeId = (int) $row->type_id;
             $subtypeId = (int) $row->subtype_id;
             $typeWeight = $this->weightFrom($settings['type_weights'] ?? [], $typeId);
-            $subtypeWeight = $this->weightFrom($settings['subtype_weights'][$typeId] ?? [], $subtypeId);
+            $subtypeWeights = $settings['subtype_weights'][$typeId]
+                ?? $settings['subtype_weights'][(string) $typeId]
+                ?? [];
+            $subtypeWeight = $this->weightFrom(is_array($subtypeWeights) ? $subtypeWeights : [], $subtypeId);
             $weight = $typeWeight * $subtypeWeight;
 
             if ($weight > 0) {

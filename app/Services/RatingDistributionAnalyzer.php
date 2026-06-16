@@ -660,12 +660,88 @@ class RatingDistributionAnalyzer
     }
 
     /**
+     * @return array<int, array{name: string, subtypes: array<int, string>}>
+     */
+    private function activeRatingCatalog(): array
+    {
+        try {
+            $connection = $this->analyticsConnection();
+            $rows = DB::connection($connection)
+                ->table('insurance_type_insurance_subtype as pivot')
+                ->join('insurance_types as types', 'types.id', '=', 'pivot.insurance_type_id')
+                ->join('insurance_subtypes as subtypes', 'subtypes.id', '=', 'pivot.insurance_subtype_id')
+                ->where('types.is_active', true)
+                ->where('subtypes.is_active', true)
+                ->get([
+                    'types.id as type_id',
+                    'types.name as type_name',
+                    'subtypes.id as subtype_id',
+                    'subtypes.name as subtype_name',
+                ]);
+
+            $catalog = [];
+
+            foreach ($rows as $row) {
+                $typeId = (int) $row->type_id;
+                $subtypeId = (int) $row->subtype_id;
+
+                if (! isset($catalog[$typeId])) {
+                    $catalog[$typeId] = [
+                        'name' => (string) $row->type_name,
+                        'subtypes' => [],
+                    ];
+                }
+
+                $catalog[$typeId]['subtypes'][$subtypeId] = (string) $row->subtype_name;
+            }
+
+            return $catalog !== [] ? $catalog : RatingDistributionCatalog::types();
+        } catch (\Throwable $exception) {
+            Log::warning('Could not load active rating catalog for analysis merge.', [
+                'message' => $exception->getMessage(),
+            ]);
+
+            return RatingDistributionCatalog::types();
+        }
+    }
+
+    /**
+     * @return array<int, float>
+     */
+    private function defaultTypeWeightsForActiveCatalog(): array
+    {
+        $weights = [];
+
+        foreach ($this->activeRatingCatalog() as $typeId => $type) {
+            $weights[(int) $typeId] = count($type['subtypes'] ?? []) > 0 ? 1.0 : 0.0;
+        }
+
+        return $weights;
+    }
+
+    /**
+     * @return array<int, array<int, float>>
+     */
+    private function defaultSubtypeWeightsForActiveCatalog(): array
+    {
+        $weights = [];
+
+        foreach ($this->activeRatingCatalog() as $typeId => $type) {
+            foreach (($type['subtypes'] ?? []) as $subtypeId => $name) {
+                $weights[(int) $typeId][(int) $subtypeId] = 1.0;
+            }
+        }
+
+        return $weights;
+    }
+
+    /**
      * @param array<int|string, mixed> $weights
      * @return array<int, float>
      */
     private function mergeTypeWeights(array $weights): array
     {
-        $merged = RatingDistributionCatalog::defaultTypeWeights();
+        $merged = $this->defaultTypeWeightsForActiveCatalog();
 
         foreach ($merged as $typeId => $default) {
             $merged[$typeId] = $this->toWeight($weights[$typeId] ?? $weights[(string) $typeId] ?? $default);
@@ -680,7 +756,7 @@ class RatingDistributionAnalyzer
      */
     private function mergeSubtypeWeights(array $weights): array
     {
-        $merged = RatingDistributionCatalog::defaultSubtypeWeights();
+        $merged = $this->defaultSubtypeWeightsForActiveCatalog();
 
         foreach ($merged as $typeId => $subtypes) {
             $typeWeights = $weights[$typeId] ?? $weights[(string) $typeId] ?? [];
