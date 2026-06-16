@@ -6,7 +6,6 @@ use App\Models\Setting;
 use App\Services\RatingDistributionAnalyzer;
 use App\Support\Rating\RatingDistributionCatalog;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Livewire\Component;
 
@@ -61,7 +60,6 @@ class AdminConfig extends Component
 
     public function mount(): void
     {
-        Gate::authorize('settings.manage');
         $this->loadSettings();
         $this->loadAnalysis();
     }

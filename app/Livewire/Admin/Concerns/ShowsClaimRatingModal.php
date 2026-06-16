@@ -5,7 +5,6 @@ namespace App\Livewire\Admin\Concerns;
 use App\Models\ClaimRating;
 use App\Models\SyntheticRatingUser;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Gate;
 
 trait ShowsClaimRatingModal
 {
@@ -28,8 +27,6 @@ trait ShowsClaimRatingModal
 
     public function openRatingModal(int $ratingId): void
     {
-        Gate::authorize('ratings.view');
-
         $this->selectedRatingId = $this->ratingDetailQuery()
             ->whereKey($ratingId)
             ->value('id');
@@ -72,8 +69,6 @@ trait ShowsClaimRatingModal
 
     public function saveRatingDetailEdits(): void
     {
-        Gate::authorize('ratings.view');
-
         $rating = $this->selectedRating();
 
         if (! $rating || ! $this->canEditSelectedRating()) {

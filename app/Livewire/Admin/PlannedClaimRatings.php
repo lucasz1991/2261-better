@@ -8,7 +8,6 @@ use App\Models\ClaimRating;
 use App\Models\Setting;
 use App\Services\BaseClaimRatingPublisher;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -34,8 +33,6 @@ class PlannedClaimRatings extends Component
 
     public function mount(): void
     {
-        Gate::authorize('ratings.view');
-
         $this->aiVariationSettings = $this->storedAiVariationSettings();
     }
 
@@ -71,8 +68,6 @@ class PlannedClaimRatings extends Component
 
     public function prepareWithAi(int $ratingId): void
     {
-        Gate::authorize('ratings.view');
-
         $rating = ClaimRating::query()
             ->planned()
             ->whereKey($ratingId)
@@ -108,8 +103,6 @@ class PlannedClaimRatings extends Component
 
     public function executeNow(int $ratingId): void
     {
-        Gate::authorize('ratings.view');
-
         $rating = ClaimRating::query()
             ->planned()
             ->whereKey($ratingId)
@@ -157,8 +150,6 @@ class PlannedClaimRatings extends Component
 
     public function undoExecution(int $ratingId): void
     {
-        Gate::authorize('ratings.view');
-
         $rating = ClaimRating::query()
             ->planned()
             ->whereKey($ratingId)
@@ -203,8 +194,6 @@ class PlannedClaimRatings extends Component
 
     public function saveAiVariationSettings(): void
     {
-        Gate::authorize('ratings.view');
-
         $settings = $this->normalizedAiVariationSettings($this->aiVariationSettings);
 
         Setting::setValue(self::AI_VARIATION_SETTING_TYPE, self::AI_VARIATION_SETTING_KEY, $settings);
@@ -216,8 +205,6 @@ class PlannedClaimRatings extends Component
 
     public function resetAiVariationSettings(): void
     {
-        Gate::authorize('ratings.view');
-
         $settings = $this->aiVariationDefaults();
 
         Setting::setValue(self::AI_VARIATION_SETTING_TYPE, self::AI_VARIATION_SETTING_KEY, $settings);

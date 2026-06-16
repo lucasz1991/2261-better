@@ -10,33 +10,29 @@
             </x-menu.sidebar-nav-link>
         </x-menu.sidebar-nav>
 
-        @canany(['settings.manage', 'employees.view'])
-            <x-menu.sidebar-nav label="System Administration">
-                @can('settings.manage')
-                    <x-menu.sidebar-nav-link
-                        :href="route('admin.config')"
-                        icon="settings"
-                        :active="request()->routeIs('admin.config')"
-                    >
-                        Einstellungen
-                    </x-menu.sidebar-nav-link>
-                @endcan
+        <x-menu.sidebar-nav label="System Administration">
+            <x-menu.sidebar-nav-link
+                :href="route('admin.config')"
+                icon="settings"
+                :active="request()->routeIs('admin.config')"
+            >
+                Einstellungen
+            </x-menu.sidebar-nav-link>
 
-                @can('employees.view')
-                    <x-menu.sidebar-nav-link
-                        :href="route('admin.employees')"
-                        icon="users"
-                        :active="request()->routeIs('admin.employees')"
-                    >
-                        Mitarbeiter
-                    </x-menu.sidebar-nav-link>
-                @endcan
+            @can('employees.view')
+                <x-menu.sidebar-nav-link
+                    :href="route('admin.employees')"
+                    icon="users"
+                    :active="request()->routeIs('admin.employees')"
+                >
+                    Mitarbeiter
+                </x-menu.sidebar-nav-link>
+            @endcan
 
-            </x-menu.sidebar-nav>
-        @endcanany
+        </x-menu.sidebar-nav>
 
-        @can('ratings.view')
-            <x-menu.sidebar-nav label="Management">
+        <x-menu.sidebar-nav label="Management">
+            @can('ratings.view')
                 <x-menu.sidebar-nav-link
                     :href="route('admin.reviews')"
                     icon="star"
@@ -44,15 +40,15 @@
                 >
                     Bewertungen
                 </x-menu.sidebar-nav-link>
+            @endcan
 
-                <x-menu.sidebar-nav-link
-                    :href="route('admin.planned-reviews')"
-                    icon="calendar"
-                    :active="request()->routeIs('admin.planned-reviews')"
-                >
-                    Geplante Bewertungen
-                </x-menu.sidebar-nav-link>
-            </x-menu.sidebar-nav>
-        @endcan
+            <x-menu.sidebar-nav-link
+                :href="route('admin.planned-reviews')"
+                icon="calendar"
+                :active="request()->routeIs('admin.planned-reviews')"
+            >
+                Geplante Bewertungen
+            </x-menu.sidebar-nav-link>
+        </x-menu.sidebar-nav>
     </ul>
 </div>

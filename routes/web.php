@@ -36,14 +36,20 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
     Route::get('/dashboard', fn () => redirect()->route('admin.dashboard'))->name('dashboard');
 });
 
+Route::middleware(['auth:sanctum', 'auth.status', config('jetstream.auth_session'), 'verified'])
+    ->prefix('administrator')
+    ->name('admin.')
+    ->group(function () {
+        Route::get('/config', AdminConfig::class)->name('config');
+        Route::get('/planned-reviews', PlannedClaimRatings::class)->name('planned-reviews');
+    });
+
 Route::middleware(['auth:sanctum', 'auth.status', config('jetstream.auth_session'), 'verified', 'role:admin,staff'])
     ->prefix('administrator')
     ->name('admin.')
     ->group(function () {
         Route::get('/', AdminDashboard::class)->name('dashboard');
         Route::get('/index', AdminDashboard::class)->name('index');
-        Route::get('/config', AdminConfig::class)->name('config');
         Route::get('/reviews', ClaimRatings::class)->name('reviews');
-        Route::get('/planned-reviews', PlannedClaimRatings::class)->name('planned-reviews');
         Route::get('/employees', Employees::class)->name('employees');
 });
