@@ -150,19 +150,25 @@ class PlannedClaimRatings extends Component
 
     public function undoExecution(int $ratingId): void
     {
-        $rating = ClaimRating::query()
-            ->planned()
-            ->whereKey($ratingId)
-            ->firstOrFail();
+        $rating = null;
 
         try {
+            $rating = ClaimRating::query()
+                ->whereKey($ratingId)
+                ->firstOrFail();
+
             app(BaseClaimRatingPublisher::class)->retract($rating);
+
+            Log::info('Synthetic rating execution rollback completed.', [
+                'claim_rating_id' => $rating->id,
+                'base_claim_rating_id' => $rating->base_claim_rating_id,
+            ]);
 
             session()->flash('success', 'Ausfuehrung wurde rueckgaengig gemacht. Die Base-ID wurde entfernt und die Bewertung kann erneut ausgefuehrt werden.');
         } catch (\Throwable $exception) {
             Log::error('Synthetic rating execution rollback failed.', [
-                'claim_rating_id' => $rating->id,
-                'base_claim_rating_id' => $rating->base_claim_rating_id,
+                'claim_rating_id' => $rating?->id ?? $ratingId,
+                'base_claim_rating_id' => $rating?->base_claim_rating_id,
                 'message' => $exception->getMessage(),
                 'exception' => $exception,
             ]);
