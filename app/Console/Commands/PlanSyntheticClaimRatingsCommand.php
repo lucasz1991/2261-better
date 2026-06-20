@@ -34,6 +34,7 @@ class PlanSyntheticClaimRatingsCommand extends Command
             ['Zieltag', (string) ($report['target_date'] ?? '-')],
             ['Tagesziel', (string) ($report['target_count'] ?? 0)],
             ['Bereits geplant', (string) ($report['already_planned'] ?? 0)],
+            ['Zurueckgerufen (nicht gezaehlt)', (string) ($report['retracted_count'] ?? 0)],
             ['Noch offen', (string) ($report['remaining'] ?? 0)],
             ['Gueltige Base-Kombinationen', (string) ($report['eligible_pairs'] ?? 0)],
             ['Gewichtungs-Fallback', $this->yesNo((bool) ($report['weight_fallback'] ?? false))],

@@ -64,7 +64,8 @@ trait ShowsClaimRatingModal
         return $rating
             && ! $rating->executed_at
             && ! $rating->base_claim_rating_id
-            && $rating->status !== ClaimRating::STATUS_PROCESSING;
+            && $rating->status !== ClaimRating::STATUS_PROCESSING
+            && ! $rating->isRetracted();
     }
 
     public function saveRatingDetailEdits(): void

@@ -10,6 +10,7 @@
             ['label' => 'Faellig', 'value' => $stats['due'], 'icon' => 'fa-hourglass-end', 'tone' => 'bg-amber-50 text-amber-700'],
             ['label' => 'Anstehend', 'value' => $stats['upcoming'], 'icon' => 'fa-calendar-day', 'tone' => 'bg-blue-50 text-blue-700'],
             ['label' => 'Ausgefuehrt', 'value' => $stats['executed'], 'icon' => 'fa-database', 'tone' => 'bg-emerald-50 text-emerald-700'],
+            ['label' => 'Zurueckgerufen', 'value' => $stats['retracted'], 'icon' => 'fa-rotate-left', 'tone' => 'bg-slate-100 text-slate-700'],
             ['label' => 'Fehler', 'value' => $stats['failed'], 'icon' => 'fa-triangle-exclamation', 'tone' => 'bg-rose-50 text-rose-700'],
         ];
     @endphp
@@ -54,7 +55,7 @@
             </div>
         </div>
 
-        <div class="mt-3 grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+        <div class="mt-3 grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
             @foreach($kpis as $kpi)
                 <div class="min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2">
                     <div class="flex items-center justify-between gap-2">
@@ -290,11 +291,14 @@
                             $typeName = data_get($rating->data, 'base_context.insurance_type.name') ?: 'Typ #' . ($rating->insurance_type_id ?? '-');
                             $subtypeName = data_get($rating->data, 'base_context.insurance_subtype.name') ?: 'Untertyp #' . ($rating->insurance_subtype_id ?? '-');
                             $displayTime = $rating->executed_at ?: $rating->scheduled_for;
-                            $timeLabel = $rating->executed_at ? 'Ausgefuehrt' : 'Geplant';
-                            $isDue = ! $rating->executed_at && $rating->scheduled_for && $rating->scheduled_for->lte(now());
-                            $timeTone = $rating->executed_at
+                            $isRetracted = $rating->isRetracted();
+                            $timeLabel = $isRetracted ? 'Zurueckgerufen' : ($rating->executed_at ? 'Ausgefuehrt' : 'Geplant');
+                            $isDue = ! $isRetracted && ! $rating->executed_at && $rating->scheduled_for && $rating->scheduled_for->lte(now());
+                            $timeTone = $isRetracted
+                                ? 'bg-slate-100 text-slate-600'
+                                : ($rating->executed_at
                                 ? 'bg-emerald-50 text-emerald-700'
-                                : ($isDue ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-700');
+                                : ($isDue ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-700'));
                             $score = $rating->rating_score !== null ? (float) $rating->rating_score : null;
                             $scoreTone = $score === null
                                 ? 'bg-slate-100 text-slate-600'
@@ -393,7 +397,7 @@
                                         {{ $rating->execution_attempts ?? 0 }} Versuche
                                     </span>
                                     <span class="inline-flex items-center rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
-                                        {{ $rating->status_label }}
+                                        {{ $isRetracted ? 'Zurueckgerufen' : $rating->status_label }}
                                     </span>
                                 </div>
 
@@ -437,7 +441,12 @@
                             </td>
 
                             <td class="whitespace-nowrap px-4 py-4 text-right align-top">
-                                @if($rating->status === \App\Models\ClaimRating::STATUS_PROCESSING)
+                                @if($isRetracted)
+                                    <span class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700">
+                                        <i class="fal fa-ban"></i>
+                                        Dauerhaft gesperrt
+                                    </span>
+                                @elseif($rating->status === \App\Models\ClaimRating::STATUS_PROCESSING)
                                     <span class="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700">
                                         <i class="fal fa-spinner fa-spin"></i>
                                         AI laeuft

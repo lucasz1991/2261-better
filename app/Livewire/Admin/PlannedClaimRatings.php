@@ -73,6 +73,12 @@ class PlannedClaimRatings extends Component
             ->whereKey($ratingId)
             ->firstOrFail();
 
+        if ($rating->isRetracted()) {
+            session()->flash('error', 'Zurueckgerufene Bewertungen koennen nicht erneut vorbereitet werden.');
+
+            return;
+        }
+
         if ($rating->executed_at) {
             session()->flash('error', 'Diese Bewertung wurde bereits ausgefuehrt.');
 
@@ -108,6 +114,12 @@ class PlannedClaimRatings extends Component
             ->whereKey($ratingId)
             ->firstOrFail();
 
+        if ($rating->isRetracted()) {
+            session()->flash('error', 'Zurueckgerufene Bewertungen koennen nicht erneut ausgefuehrt werden.');
+
+            return;
+        }
+
         if ($rating->status === ClaimRating::STATUS_PROCESSING) {
             session()->flash('error', 'Diese Bewertung wird gerade verarbeitet.');
 
@@ -115,9 +127,6 @@ class PlannedClaimRatings extends Component
         }
 
         try {
-            $this->releaseManualOnlyAfterRetract($rating);
-            $rating->refresh();
-
             if (! is_array($rating->answers) || $rating->answers === []) {
                 GenerateSyntheticClaimRating::dispatchSync($rating->fresh());
                 $rating->refresh();
@@ -164,7 +173,7 @@ class PlannedClaimRatings extends Component
                 'base_claim_rating_id' => $rating->base_claim_rating_id,
             ]);
 
-            session()->flash('success', 'Ausfuehrung wurde rueckgaengig gemacht. Die Base-ID wurde entfernt und die Bewertung kann erneut ausgefuehrt werden.');
+            session()->flash('success', 'Ausfuehrung wurde rueckgaengig gemacht. Die Bewertung bleibt dauerhaft vom erneuten Lauf ausgeschlossen.');
         } catch (\Throwable $exception) {
             Log::error('Synthetic rating execution rollback failed.', [
                 'claim_rating_id' => $rating?->id ?? $ratingId,
@@ -176,27 +185,6 @@ class PlannedClaimRatings extends Component
             session()->flash('error', 'Rueckgaengig machen fehlgeschlagen: '.$exception->getMessage());
         }
     }
-
-    private function releaseManualOnlyAfterRetract(ClaimRating $rating): void
-    {
-        if (! $rating->isManualOnlyAfterRetract()) {
-            return;
-        }
-
-        $data = $rating->data ?? [];
-        $data['execution_control'] = array_merge($data['execution_control'] ?? [], [
-            'manual_only_after_retract' => false,
-            'manual_released_at' => now()->toDateTimeString(),
-            'manual_released_by' => static::class,
-        ]);
-
-        $rating->forceFill([
-            'data' => $data,
-            'last_execution_error' => null,
-            'status' => ClaimRating::STATUS_SCHEDULED,
-        ])->saveQuietly();
-    }
-
 
     public function saveAiVariationSettings(): void
     {
@@ -344,6 +332,11 @@ class PlannedClaimRatings extends Component
                 ->whereNotIn('status', [ClaimRating::STATUS_FAILED, ClaimRating::STATUS_PROCESSING]),
             'processing' => $query->where('status', ClaimRating::STATUS_PROCESSING),
             'executed' => $query->whereNotNull('executed_at'),
+            'retracted' => $query->where(function (Builder $query): void {
+                $query
+                    ->where('status', ClaimRating::STATUS_RETRACTED)
+                    ->orWhere('data->execution_control->manual_only_after_retract', true);
+            }),
             'failed' => $query->where(function (Builder $query) {
                 $query
                     ->where('status', ClaimRating::STATUS_FAILED)
@@ -364,6 +357,7 @@ class PlannedClaimRatings extends Component
             'due' => 'Faellig',
             'processing' => 'In Ausfuehrung',
             'executed' => 'Ausgefuehrt',
+            'retracted' => 'Zurueckgerufen',
             'failed' => 'Fehlgeschlagen',
         ];
     }
@@ -398,6 +392,13 @@ class PlannedClaimRatings extends Component
                 ->whereNotIn('status', [ClaimRating::STATUS_FAILED, ClaimRating::STATUS_PROCESSING])
                 ->count(),
             'executed' => (clone $planned)->whereNotNull('executed_at')->count(),
+            'retracted' => (clone $planned)
+                ->where(function (Builder $query): void {
+                    $query
+                        ->where('status', ClaimRating::STATUS_RETRACTED)
+                        ->orWhere('data->execution_control->manual_only_after_retract', true);
+                })
+                ->count(),
             'failed' => (clone $planned)
                 ->where(function (Builder $query) {
                     $query

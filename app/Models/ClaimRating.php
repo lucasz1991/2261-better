@@ -22,6 +22,7 @@ class ClaimRating extends Model
     public const STATUS_SCHEDULED = 'scheduled';
     public const STATUS_PROCESSING = 'processing';
     public const STATUS_FAILED = 'failed';
+    public const STATUS_RETRACTED = 'retracted';
 
     protected $fillable = [
         'base_claim_rating_id',
@@ -77,6 +78,7 @@ class ClaimRating extends Model
             self::STATUS_SCHEDULED => 'Geplant',
             self::STATUS_PROCESSING => 'In Ausfuehrung',
             self::STATUS_FAILED => 'Fehlgeschlagen',
+            self::STATUS_RETRACTED => 'Zurueckgerufen',
         ];
     }
 
@@ -132,17 +134,20 @@ class ClaimRating extends Model
                     self::STATUS_SCHEDULED,
                     self::STATUS_PROCESSING,
                     self::STATUS_FAILED,
+                    self::STATUS_RETRACTED,
                 ]);
         });
     }
 
     public function scopeWithoutManualOnlyAfterRetract(Builder $query): Builder
     {
-        return $query->where(function (Builder $query): void {
-            $query
-                ->whereNull('data->execution_control->manual_only_after_retract')
-                ->orWhere('data->execution_control->manual_only_after_retract', false);
-        });
+        return $query
+            ->where('status', '!=', self::STATUS_RETRACTED)
+            ->where(function (Builder $query): void {
+                $query
+                    ->whereNull('data->execution_control->manual_only_after_retract')
+                    ->orWhere('data->execution_control->manual_only_after_retract', false);
+            });
     }
 
     public function isManualOnlyAfterRetract(): bool
@@ -150,8 +155,17 @@ class ClaimRating extends Model
         return (bool) data_get($this->data ?? [], 'execution_control.manual_only_after_retract', false);
     }
 
+    public function isRetracted(): bool
+    {
+        return $this->status === self::STATUS_RETRACTED || $this->isManualOnlyAfterRetract();
+    }
+
     public function getExecutionStateLabelAttribute(): string
     {
+        if ($this->isRetracted()) {
+            return 'Zurueckgerufen';
+        }
+
         if ($this->executed_at) {
             return 'Ausgefuehrt';
         }
@@ -162,10 +176,6 @@ class ClaimRating extends Model
 
         if ($this->status === self::STATUS_PROCESSING) {
             return 'Laeuft';
-        }
-
-        if ($this->isManualOnlyAfterRetract()) {
-            return 'Zurueckgerufen';
         }
 
         if ($this->scheduled_for && $this->scheduled_for->isPast()) {

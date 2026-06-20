@@ -43,7 +43,7 @@ class GenerateSyntheticClaimRating implements ShouldQueue
     {
         $this->claimRating->refresh();
 
-        if ($this->claimRating->executed_at) {
+        if ($this->claimRating->executed_at || $this->claimRating->isRetracted()) {
             return;
         }
 
@@ -75,6 +75,12 @@ class GenerateSyntheticClaimRating implements ShouldQueue
 
             if (! is_array($payload['answers'] ?? null) || $payload['answers'] === []) {
                 throw new \RuntimeException('AI did not return usable answers.');
+            }
+
+            $this->claimRating->refresh();
+
+            if ($this->claimRating->isRetracted()) {
+                return;
             }
 
             $answers = $this->normalizeAnswers($payload['answers'], $baseContext);
@@ -110,6 +116,12 @@ class GenerateSyntheticClaimRating implements ShouldQueue
             ClaimRatingAIEval::dispatchSync($this->claimRating->fresh(), false, $this->markExecuted);
 
             if ($this->markExecuted) {
+                $this->claimRating->refresh();
+
+                if ($this->claimRating->isRetracted()) {
+                    return;
+                }
+
                 $basePublisher->publish($this->claimRating->fresh());
             }
         } catch (\Throwable $exception) {

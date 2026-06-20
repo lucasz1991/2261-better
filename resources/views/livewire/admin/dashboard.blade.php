@@ -69,7 +69,7 @@
                     </div>
                 </div>
 
-                <div class="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                <div class="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
                     @foreach($statusCards as $card)
                         @php
                             $tone = $card['tone'] ?? 'slate';

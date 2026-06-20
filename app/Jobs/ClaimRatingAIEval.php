@@ -33,6 +33,10 @@ class ClaimRatingAIEval implements ShouldQueue
     {
         $this->claimRating->refresh();
 
+        if ($this->claimRating->isRetracted()) {
+            return;
+        }
+
         $answers = $this->claimRating->answers ?? [];
         $attachments = $this->claimRating->attachments ?? [];
         $data = $this->claimRating->data ?? [];
@@ -79,6 +83,12 @@ class ClaimRatingAIEval implements ShouldQueue
                 ? round($this->claimRating->rating_score - (float) $targetScoreProfile['target_score'], 2)
                 : null;
             $this->claimRating->attachments = $attachments;
+        }
+
+        $currentState = ClaimRating::query()->find($this->claimRating->id);
+
+        if (! $currentState || $currentState->isRetracted()) {
+            return;
         }
 
         $this->claimRating->status = ClaimRating::STATUS_RATED;

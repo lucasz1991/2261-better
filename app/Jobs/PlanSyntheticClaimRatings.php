@@ -47,6 +47,7 @@ class PlanSyntheticClaimRatings implements ShouldQueue
             'target_date' => null,
             'target_count' => 0,
             'already_planned' => 0,
+            'retracted_count' => 0,
             'remaining' => 0,
             'created_count' => 0,
             'skipped_count' => 0,
@@ -75,9 +76,20 @@ class PlanSyntheticClaimRatings implements ShouldQueue
             return $report;
         }
 
-        $alreadyPlanned = ClaimRating::query()
+        $dayRatings = ClaimRating::query()
             ->whereDate('scheduled_for', $targetDate->toDateString())
-            ->where('data->synthetic', true)
+            ->where('data->synthetic', true);
+
+        $report['retracted_count'] = (clone $dayRatings)
+            ->where(function ($query): void {
+                $query
+                    ->where('status', ClaimRating::STATUS_RETRACTED)
+                    ->orWhere('data->execution_control->manual_only_after_retract', true);
+            })
+            ->count();
+
+        $alreadyPlanned = (clone $dayRatings)
+            ->withoutManualOnlyAfterRetract()
             ->count();
 
         $remaining = max(0, $targetCount - $alreadyPlanned);

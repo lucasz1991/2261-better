@@ -23,6 +23,7 @@ class AdminDashboard extends Component
     public int $failedRatings = 0;
     public int $processingRatings = 0;
     public int $upcomingRatings = 0;
+    public int $retractedRatings = 0;
     public ?float $averageScore = null;
     public ?string $nextScheduledFor = null;
     public ?string $nextScheduledAtIso = null;
@@ -90,7 +91,10 @@ class AdminDashboard extends Component
             : 0;
         $this->publicRatings = ClaimRating::where('is_public', true)->count();
         $this->pendingRatings = ClaimRating::where('status', ClaimRating::STATUS_PENDING)->count();
-        $this->plannedRatings = ClaimRating::planned()->whereNull('executed_at')->count();
+        $this->plannedRatings = ClaimRating::planned()
+            ->whereNull('executed_at')
+            ->withoutManualOnlyAfterRetract()
+            ->count();
         $this->dueRatings = ClaimRating::query()
             ->whereNull('executed_at')
             ->whereNotNull('scheduled_for')
@@ -101,6 +105,7 @@ class AdminDashboard extends Component
         $this->preparedRatings = ClaimRating::query()
             ->whereNull('executed_at')
             ->whereNotNull('answers')
+            ->withoutManualOnlyAfterRetract()
             ->count();
         $this->executedRatings = ClaimRating::whereNotNull('executed_at')->count();
         $this->failedRatings = ClaimRating::query()
@@ -111,6 +116,13 @@ class AdminDashboard extends Component
             })
             ->count();
         $this->processingRatings = ClaimRating::where('status', ClaimRating::STATUS_PROCESSING)->count();
+        $this->retractedRatings = ClaimRating::query()
+            ->where(function ($query): void {
+                $query
+                    ->where('status', ClaimRating::STATUS_RETRACTED)
+                    ->orWhere('data->execution_control->manual_only_after_retract', true);
+            })
+            ->count();
         $this->upcomingRatings = ClaimRating::query()
             ->whereNull('executed_at')
             ->whereNotNull('scheduled_for')
@@ -234,6 +246,13 @@ class AdminDashboard extends Component
                 'detail' => $this->linkedBaseRatings.' mit Base-ID',
                 'icon' => 'fa-check-circle',
                 'tone' => 'emerald',
+            ],
+            [
+                'label' => 'Zurueckgerufen',
+                'value' => $this->retractedRatings,
+                'detail' => 'Dauerhaft von neuen Laeufen ausgeschlossen',
+                'icon' => 'fa-rotate-left',
+                'tone' => 'slate',
             ],
             [
                 'label' => 'Fehler',

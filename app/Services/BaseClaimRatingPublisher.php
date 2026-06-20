@@ -42,6 +42,10 @@ class BaseClaimRatingPublisher
     {
         $rating->refresh();
 
+        if ($rating->isRetracted()) {
+            throw new \RuntimeException('Zurueckgerufene Bewertungen duerfen nicht erneut in die Base-Datenbank geschrieben werden.');
+        }
+
         if ($rating->base_claim_rating_id) {
             $existingBaseRating = $this->baseRating((int) $rating->base_claim_rating_id);
 
@@ -571,7 +575,7 @@ class BaseClaimRatingPublisher
             'executed_at' => null,
             'execution_started_at' => null,
             'last_execution_error' => null,
-            'status' => ClaimRating::STATUS_SCHEDULED,
+            'status' => ClaimRating::STATUS_RETRACTED,
             'is_public' => false,
             'data' => $data,
         ])->saveQuietly();
