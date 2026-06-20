@@ -307,6 +307,7 @@
                             $syntheticUser = $rating->syntheticUser;
                             $baseUserId = $syntheticUser?->base_user_id ?: $rating->base_user_id;
                             $userLabel = $syntheticUser?->display_name ?: data_get($rating->user_data, 'display_name');
+                            $canDelete = $rating->canBeDeletedFromPlan() && ! $baseUserId;
                         @endphp
 
                         <tr
@@ -441,32 +442,32 @@
                             </td>
 
                             <td class="whitespace-nowrap px-4 py-4 text-right align-top">
-                                @if($isRetracted)
-                                    <span class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700">
-                                        <i class="fal fa-ban"></i>
-                                        Dauerhaft gesperrt
-                                    </span>
-                                @elseif($rating->status === \App\Models\ClaimRating::STATUS_PROCESSING)
-                                    <span class="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700">
-                                        <i class="fal fa-spinner fa-spin"></i>
-                                        AI laeuft
-                                    </span>
-                                @elseif($rating->executed_at)
-                                    <button
-                                        type="button"
-                                        wire:click.stop="undoExecution({{ $rating->id }})"
-                                        wire:confirm="Diese Ausfuehrung wirklich rueckgaengig machen und den synthetischen Base-Datensatz entfernen?"
-                                        wire:loading.attr="disabled"
-                                        wire:target="undoExecution({{ $rating->id }})"
-                                        class="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-300 bg-white px-3 py-2 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                                    >
-                                        <i class="fal fa-rotate-left" wire:loading.remove wire:target="undoExecution({{ $rating->id }})"></i>
-                                        <i class="fal fa-spinner fa-spin" wire:loading wire:target="undoExecution({{ $rating->id }})"></i>
-                                        <span wire:loading.remove wire:target="undoExecution({{ $rating->id }})">Rueckgaengig</span>
-                                        <span wire:loading wire:target="undoExecution({{ $rating->id }})">Entfernt...</span>
-                                    </button>
-                                @else
-                                    <div class="flex justify-end gap-2">
+                                <div class="flex justify-end gap-2">
+                                    @if($isRetracted)
+                                        <span class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700">
+                                            <i class="fal fa-ban"></i>
+                                            Dauerhaft gesperrt
+                                        </span>
+                                    @elseif($rating->status === \App\Models\ClaimRating::STATUS_PROCESSING)
+                                        <span class="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700">
+                                            <i class="fal fa-spinner fa-spin"></i>
+                                            AI laeuft
+                                        </span>
+                                    @elseif($rating->executed_at)
+                                        <button
+                                            type="button"
+                                            wire:click.stop="undoExecution({{ $rating->id }})"
+                                            wire:confirm="Diese Ausfuehrung wirklich rueckgaengig machen und den synthetischen Base-Datensatz entfernen?"
+                                            wire:loading.attr="disabled"
+                                            wire:target="undoExecution({{ $rating->id }})"
+                                            class="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-300 bg-white px-3 py-2 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                            <i class="fal fa-rotate-left" wire:loading.remove wire:target="undoExecution({{ $rating->id }})"></i>
+                                            <i class="fal fa-spinner fa-spin" wire:loading wire:target="undoExecution({{ $rating->id }})"></i>
+                                            <span wire:loading.remove wire:target="undoExecution({{ $rating->id }})">Rueckgaengig</span>
+                                            <span wire:loading wire:target="undoExecution({{ $rating->id }})">Entfernt...</span>
+                                        </button>
+                                    @else
                                         <button
                                             type="button"
                                             wire:click.stop="prepareWithAi({{ $rating->id }})"
@@ -494,8 +495,24 @@
                                             <span wire:loading.remove wire:target="executeNow({{ $rating->id }})">Ausfuehren</span>
                                             <span wire:loading wire:target="executeNow({{ $rating->id }})">Startet...</span>
                                         </button>
-                                    </div>
-                                @endif
+                                    @endif
+
+                                    @if($canDelete)
+                                        <button
+                                            type="button"
+                                            wire:click.stop="deleteRating({{ $rating->id }})"
+                                            wire:confirm="Diese noch nicht ausgefuehrte Bewertung wirklich loeschen? Ein verwaister lokaler Testnutzer wird ebenfalls entfernt."
+                                            wire:loading.attr="disabled"
+                                            wire:target="deleteRating({{ $rating->id }})"
+                                            class="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-300 bg-white px-3 py-2 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                            <i class="fal fa-trash" wire:loading.remove wire:target="deleteRating({{ $rating->id }})"></i>
+                                            <i class="fal fa-spinner fa-spin" wire:loading wire:target="deleteRating({{ $rating->id }})"></i>
+                                            <span wire:loading.remove wire:target="deleteRating({{ $rating->id }})">Loeschen</span>
+                                            <span wire:loading wire:target="deleteRating({{ $rating->id }})">Loescht...</span>
+                                        </button>
+                                    @endif
+                                </div>
                             </td>
                         </tr>
                     @empty

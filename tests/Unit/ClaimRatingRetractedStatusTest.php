@@ -3,7 +3,7 @@
 namespace Tests\Unit;
 
 use App\Models\ClaimRating;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 class ClaimRatingRetractedStatusTest extends TestCase
 {
@@ -31,5 +31,36 @@ class ClaimRatingRetractedStatusTest extends TestCase
 
         $this->assertTrue($rating->isRetracted());
         $this->assertSame('Zurueckgerufen', $rating->execution_state_label);
+    }
+
+    public function test_unexecuted_rating_without_base_link_can_be_deleted_from_plan(): void
+    {
+        $rating = new ClaimRating([
+            'status' => ClaimRating::STATUS_SCHEDULED,
+            'executed_at' => null,
+            'base_claim_rating_id' => null,
+            'base_user_id' => null,
+        ]);
+
+        $this->assertTrue($rating->canBeDeletedFromPlan());
+    }
+
+    public function test_executed_processing_or_base_linked_rating_cannot_be_deleted_from_plan(): void
+    {
+        $executed = new ClaimRating([
+            'status' => ClaimRating::STATUS_RATED,
+            'executed_at' => now(),
+        ]);
+        $processing = new ClaimRating([
+            'status' => ClaimRating::STATUS_PROCESSING,
+        ]);
+        $baseLinked = new ClaimRating([
+            'status' => ClaimRating::STATUS_SCHEDULED,
+            'base_claim_rating_id' => 123,
+        ]);
+
+        $this->assertFalse($executed->canBeDeletedFromPlan());
+        $this->assertFalse($processing->canBeDeletedFromPlan());
+        $this->assertFalse($baseLinked->canBeDeletedFromPlan());
     }
 }

@@ -160,6 +160,14 @@ class ClaimRating extends Model
         return $this->status === self::STATUS_RETRACTED || $this->isManualOnlyAfterRetract();
     }
 
+    public function canBeDeletedFromPlan(): bool
+    {
+        return ! $this->executed_at
+            && ! $this->base_claim_rating_id
+            && ! $this->base_user_id
+            && $this->status !== self::STATUS_PROCESSING;
+    }
+
     public function getExecutionStateLabelAttribute(): string
     {
         if ($this->isRetracted()) {

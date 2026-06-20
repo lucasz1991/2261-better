@@ -8,6 +8,7 @@ use App\Models\ClaimRating;
 use App\Models\Setting;
 use App\Services\BaseClaimRatingPublisher;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -183,6 +184,68 @@ class PlannedClaimRatings extends Component
             ]);
 
             session()->flash('error', 'Rueckgaengig machen fehlgeschlagen: '.$exception->getMessage());
+        }
+    }
+
+    public function deleteRating(int $ratingId): void
+    {
+        $deletedUser = false;
+
+        try {
+            DB::transaction(function () use ($ratingId, &$deletedUser): void {
+                $rating = ClaimRating::query()
+                    ->with('syntheticUser')
+                    ->whereKey($ratingId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                $syntheticUser = $rating->syntheticUser;
+                $baseUserId = (int) ($rating->base_user_id ?: ($syntheticUser?->base_user_id ?? 0));
+
+                if (! $rating->canBeDeletedFromPlan() || $baseUserId > 0) {
+                    throw new \RuntimeException('Nur zurueckgerufene oder noch nicht ausgefuehrte Bewertungen ohne Base-Verknuepfung koennen geloescht werden.');
+                }
+
+                $data = $rating->data ?? [];
+                $data['execution_control'] = array_merge($data['execution_control'] ?? [], [
+                    'manual_only_after_retract' => true,
+                    'deleted_from_plan_at' => now()->toDateTimeString(),
+                    'deleted_from_plan_by' => static::class,
+                ]);
+
+                $rating->forceFill([
+                    'status' => ClaimRating::STATUS_RETRACTED,
+                    'data' => $data,
+                ])->saveQuietly();
+
+                $rating->delete();
+
+                if ($syntheticUser
+                    && ! $syntheticUser->base_user_id
+                    && ! $syntheticUser->claimRatings()->exists()) {
+                    $syntheticUser->delete();
+                    $deletedUser = true;
+                }
+            });
+
+            if ($this->selectedRatingId === $ratingId) {
+                $this->closeRatingModal();
+            }
+
+            session()->flash(
+                'success',
+                $deletedUser
+                    ? 'Bewertung und verwaister lokaler Testnutzer wurden geloescht.'
+                    : 'Bewertung wurde geloescht.'
+            );
+        } catch (\Throwable $exception) {
+            Log::error('Planned synthetic rating deletion failed.', [
+                'claim_rating_id' => $ratingId,
+                'message' => $exception->getMessage(),
+                'exception' => $exception,
+            ]);
+
+            session()->flash('error', 'Loeschen fehlgeschlagen: '.$exception->getMessage());
         }
     }
 
