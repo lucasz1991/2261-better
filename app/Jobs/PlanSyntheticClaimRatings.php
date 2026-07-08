@@ -51,6 +51,7 @@ class PlanSyntheticClaimRatings implements ShouldQueue
             'remaining' => 0,
             'created_count' => 0,
             'skipped_count' => 0,
+            'eligible_providers' => 0,
             'eligible_pairs' => 0,
             'weight_fallback' => false,
             'created' => [],
@@ -106,17 +107,56 @@ class PlanSyntheticClaimRatings implements ShouldQueue
         $connection = RegCheckDatabase::connectionName();
         $report['connection'] = $connection;
         $eligiblePairs = $this->eligiblePairs($connection, $settings);
+        $eligibleProviders = $this->eligibleProviders($connection, $settings);
+        $report['eligible_providers'] = count($eligibleProviders);
         $report['eligible_pairs'] = count($eligiblePairs['pairs']);
         $report['weight_fallback'] = $eligiblePairs['weight_fallback'];
 
-        if ($eligiblePairs['pairs'] === []) {
-            $report['reason'] = 'Keine aktiven Typ-/Untertyp-Kombinationen in der Base-Datenbank gefunden.';
+        if ($eligibleProviders === []) {
+            $report['reason'] = 'Keine aktive Versicherung mit positiver Anbietergewichtung in der Base-Datenbank gefunden.';
 
             return $report;
         }
 
         for ($i = 0; $i < $remaining; $i++) {
-            $pair = $this->weightedRandomPair($eligiblePairs['pairs']);
+            $provider = $this->weightedRandomProvider($eligibleProviders);
+            $providerId = (int) ($provider['id'] ?? 0);
+            $providerWeight = (float) ($provider['weight'] ?? 0);
+
+            if (! $providerId) {
+                Log::warning('Synthetic rating planning skipped one slot because no provider weight is available.');
+                $report['skipped'][] = [
+                    'slot' => $i + 1,
+                    'insurance_id' => null,
+                    'insurance_name' => null,
+                    'provider_weight' => null,
+                    'provider_candidate_pairs' => 0,
+                    'reason' => 'Keine positive Anbietergewichtung verfuegbar.',
+                ];
+                continue;
+            }
+
+            $providerPairs = $this->eligiblePairs($connection, $settings, $providerId);
+            $providerCandidatePairCount = count($providerPairs['pairs']);
+
+            if ($providerPairs['pairs'] === []) {
+                Log::warning('Synthetic rating planning skipped one slot because selected provider has no eligible type/subtype pair.', [
+                    'insurance_id' => $providerId,
+                    'insurance_name' => $provider['name'] ?? null,
+                    'provider_weight' => $providerWeight,
+                ]);
+                $report['skipped'][] = [
+                    'slot' => $i + 1,
+                    'insurance_id' => $providerId,
+                    'insurance_name' => $provider['name'] ?? null,
+                    'provider_weight' => $providerWeight,
+                    'provider_candidate_pairs' => 0,
+                    'reason' => 'Ausgewaehlter Anbieter hat keine aktive Typ-/Untertyp-Kombination.',
+                ];
+                continue;
+            }
+
+            $pair = $this->weightedRandomPair($providerPairs['pairs']);
             $typeId = $pair['type_id'] ?? null;
             $subtypeId = $pair['subtype_id'] ?? null;
 
@@ -124,6 +164,10 @@ class PlanSyntheticClaimRatings implements ShouldQueue
                 Log::warning('Synthetic rating planning skipped one slot because no type/subtype weight is available.');
                 $report['skipped'][] = [
                     'slot' => $i + 1,
+                    'insurance_id' => $providerId,
+                    'insurance_name' => $provider['name'] ?? null,
+                    'provider_weight' => $providerWeight,
+                    'provider_candidate_pairs' => $providerCandidatePairCount,
                     'type_id' => $typeId,
                     'subtype_id' => $subtypeId,
                     'reason' => 'Keine positive Typ-/Untertyp-Gewichtung verfuegbar.',
@@ -132,15 +176,22 @@ class PlanSyntheticClaimRatings implements ShouldQueue
             }
 
             try {
-                $baseContext = $this->resolveBaseContext($connection, $typeId, $subtypeId, $settings);
+                $baseContext = $this->resolveBaseContext($connection, $typeId, $subtypeId, $providerId);
             } catch (\Throwable $exception) {
                 Log::warning('Synthetic rating planning skipped one slot because base context could not be resolved.', [
+                    'insurance_id' => $providerId,
+                    'insurance_name' => $provider['name'] ?? null,
+                    'provider_weight' => $providerWeight,
                     'type_id' => $typeId,
                     'subtype_id' => $subtypeId,
                     'message' => $exception->getMessage(),
                 ]);
                 $report['skipped'][] = [
                     'slot' => $i + 1,
+                    'insurance_id' => $providerId,
+                    'insurance_name' => $provider['name'] ?? null,
+                    'provider_weight' => $providerWeight,
+                    'provider_candidate_pairs' => $providerCandidatePairCount,
                     'type_id' => $typeId,
                     'subtype_id' => $subtypeId,
                     'reason' => $exception->getMessage(),
@@ -196,6 +247,8 @@ class PlanSyntheticClaimRatings implements ShouldQueue
                 'subtype_name' => $baseContext['insurance_subtype']['name'] ?? null,
                 'insurance_id' => $baseContext['insurance']['id'] ?? null,
                 'insurance_name' => $baseContext['insurance']['name'] ?? null,
+                'provider_weight' => $providerWeight,
+                'provider_candidate_pairs' => $providerCandidatePairCount,
                 'questionnaire_version_id' => $baseContext['questionnaire_version']['id'] ?? null,
                 'target_score_label' => $targetScoreProfile['label'] ?? null,
                 'synthetic_rating_user_id' => $syntheticUser->id,
@@ -216,12 +269,15 @@ class PlanSyntheticClaimRatings implements ShouldQueue
     /**
      * @return array{pairs: array<int, array<string, mixed>>, weight_fallback: bool}
      */
-    private function eligiblePairs(string $connection, array $settings): array
+    private function eligiblePairs(string $connection, array $settings, ?int $providerId = null): array
     {
-        $rows = DB::connection($connection)
-            ->table('insurance_type_insurance_subtype as itis')
+        $query = DB::connection($connection)
+            ->table('insurances')
+            ->join('insurance_insurance_type as iit', 'iit.insurance_id', '=', 'insurances.id')
+            ->join('insurance_type_insurance_subtype as itis', 'itis.insurance_type_id', '=', 'iit.insurance_type_id')
             ->join('insurance_types as types', 'types.id', '=', 'itis.insurance_type_id')
             ->join('insurance_subtypes as subtypes', 'subtypes.id', '=', 'itis.insurance_subtype_id')
+            ->where('insurances.is_active', true)
             ->where('types.is_active', true)
             ->where('subtypes.is_active', true)
             ->select([
@@ -230,7 +286,13 @@ class PlanSyntheticClaimRatings implements ShouldQueue
                 'subtypes.id as subtype_id',
                 'subtypes.name as subtype_name',
             ])
-            ->get();
+            ->distinct();
+
+        if ($providerId !== null) {
+            $query->where('insurances.id', $providerId);
+        }
+
+        $rows = $query->get();
 
         $pairs = [];
 
@@ -277,6 +339,35 @@ class PlanSyntheticClaimRatings implements ShouldQueue
     }
 
     /**
+     * @return array<int, array{id: int, name: string, weight: float}>
+     */
+    private function eligibleProviders(string $connection, array $settings): array
+    {
+        $rows = DB::connection($connection)
+            ->table('insurances')
+            ->where('is_active', true)
+            ->orderBy('id')
+            ->get(['id', 'name']);
+
+        $providers = [];
+
+        foreach ($rows as $row) {
+            $providerId = (int) $row->id;
+            $weight = $this->providerWeightFrom($settings['provider_weights'] ?? [], $providerId);
+
+            if ($weight > 0) {
+                $providers[] = [
+                    'id' => $providerId,
+                    'name' => (string) $row->name,
+                    'weight' => $weight,
+                ];
+            }
+        }
+
+        return $providers;
+    }
+
+    /**
      * @param array<int, array<string, mixed>> $pairs
      * @return array<string, mixed>
      */
@@ -300,6 +391,32 @@ class PlanSyntheticClaimRatings implements ShouldQueue
         }
 
         return $pairs[array_key_last($pairs)] ?? [];
+    }
+
+    /**
+     * @param array<int, array{id: int, name: string, weight: float}> $providers
+     * @return array{id?: int, name?: string, weight?: float}
+     */
+    private function weightedRandomProvider(array $providers): array
+    {
+        $total = array_sum(array_map(fn (array $provider): float => (float) ($provider['weight'] ?? 0), $providers));
+
+        if ($total <= 0) {
+            return [];
+        }
+
+        $target = lcg_value() * $total;
+        $cursor = 0.0;
+
+        foreach ($providers as $provider) {
+            $cursor += (float) ($provider['weight'] ?? 0);
+
+            if ($target <= $cursor) {
+                return $provider;
+            }
+        }
+
+        return $providers[array_key_last($providers)] ?? [];
     }
 
     /**
@@ -374,6 +491,14 @@ class PlanSyntheticClaimRatings implements ShouldQueue
         }
 
         return (int) array_key_last($normalized);
+    }
+
+    /**
+     * @param array<int|string, mixed> $weights
+     */
+    private function providerWeightFrom(array $weights, int $id): float
+    {
+        return max(0.0, (float) ($weights[$id] ?? $weights[(string) $id] ?? 1.0));
     }
 
     /**
@@ -456,7 +581,7 @@ class PlanSyntheticClaimRatings implements ShouldQueue
     /**
      * @return array<string, mixed>
      */
-    private function resolveBaseContext(string $connection, int $typeId, int $subtypeId, array $settings): array
+    private function resolveBaseContext(string $connection, int $typeId, int $subtypeId, int $providerId): array
     {
         $type = DB::connection($connection)
             ->table('insurance_types')
@@ -472,29 +597,19 @@ class PlanSyntheticClaimRatings implements ShouldQueue
             throw new \RuntimeException('Insurance type or subtype not found in base database.');
         }
 
-        $insurances = DB::connection($connection)
+        $insurance = DB::connection($connection)
             ->table('insurances')
             ->join('insurance_insurance_type as iit', 'iit.insurance_id', '=', 'insurances.id')
             ->join('insurance_type_insurance_subtype as itis', 'itis.insurance_type_id', '=', 'iit.insurance_type_id')
+            ->where('insurances.id', $providerId)
             ->where('iit.insurance_type_id', $typeId)
             ->where('itis.insurance_subtype_id', $subtypeId)
             ->where('insurances.is_active', true)
-            ->get(['insurances.id', 'insurances.name']);
+            ->first(['insurances.id', 'insurances.name']);
 
-        if ($insurances->isEmpty()) {
-            $insurances = DB::connection($connection)
-                ->table('insurances')
-                ->join('insurance_insurance_type as iit', 'iit.insurance_id', '=', 'insurances.id')
-                ->where('iit.insurance_type_id', $typeId)
-                ->where('insurances.is_active', true)
-                ->get(['insurances.id', 'insurances.name']);
+        if (! $insurance) {
+            throw new \RuntimeException('Selected provider is not active or does not support selected type/subtype.');
         }
-
-        if ($insurances->isEmpty()) {
-            throw new \RuntimeException('No active insurance found for selected type/subtype.');
-        }
-
-        $insurance = $this->weightedRandomInsurance($insurances->all(), $settings['provider_weights'] ?? []);
 
         $questionnaireVersion = DB::connection($connection)
             ->table('rating_questionnaire_versions')
@@ -524,44 +639,6 @@ class PlanSyntheticClaimRatings implements ShouldQueue
                 'snapshot' => $this->decodeJson($questionnaireVersion->snapshot),
             ] : null,
         ];
-    }
-
-    /**
-     * @param array<int, object> $insurances
-     * @param array<int|string, mixed> $providerWeights
-     */
-    private function weightedRandomInsurance(array $insurances, array $providerWeights): object
-    {
-        $weighted = [];
-
-        foreach ($insurances as $insurance) {
-            $id = (int) $insurance->id;
-            $weight = max(0.0, (float) ($providerWeights[$id] ?? $providerWeights[(string) $id] ?? 1.0));
-
-            if ($weight > 0) {
-                $weighted[] = [
-                    'insurance' => $insurance,
-                    'weight' => $weight,
-                ];
-            }
-        }
-
-        if ($weighted === []) {
-            return $insurances[array_rand($insurances)];
-        }
-
-        $target = lcg_value() * array_sum(array_column($weighted, 'weight'));
-        $cursor = 0.0;
-
-        foreach ($weighted as $entry) {
-            $cursor += (float) $entry['weight'];
-
-            if ($target <= $cursor) {
-                return $entry['insurance'];
-            }
-        }
-
-        return $weighted[array_key_last($weighted)]['insurance'];
     }
 
     /**
