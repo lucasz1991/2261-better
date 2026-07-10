@@ -104,7 +104,8 @@ class ClaimRating extends Model
             $query
                 ->where('moderator_comment', 'like', '%' . $search . '%')
                 ->orWhere('last_execution_error', 'like', '%' . $search . '%')
-                ->orWhere('status', 'like', '%' . $search . '%');
+                ->orWhere('status', 'like', '%' . $search . '%')
+                ->orWhere('data->base_context->insurance->name', 'like', '%' . $search . '%');
 
             if (is_numeric($search)) {
                 $query
