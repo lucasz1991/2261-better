@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Rating\SyntheticIdentityGenerator;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -44,14 +45,25 @@ class SyntheticRatingUser extends Model
         $token = strtolower((string) Str::random(12));
         $nameMode = self::syntheticUserNameMode();
         $privacySettings = self::privacySettingsForNameMode(self::privacySettingsFromAnalysis(), $nameMode);
-        $persona = self::syntheticPersona($privacySettings, $nameMode);
-        $username = self::usernameFromPersona($persona, $token);
-        $emailDomain = self::emailDomainFromAnalysis();
-        $email = self::syntheticEmail($persona, $token, $emailDomain);
+        $identityGenerator = new SyntheticIdentityGenerator;
+        $persona = $identityGenerator->persona($privacySettings);
+        $username = $identityGenerator->username(
+            $persona,
+            fn (string $candidate): bool => self::withTrashed()->where('username', $candidate)->exists(),
+            $token
+        );
+        $emailProfile = self::emailDomainProfile($identityGenerator);
+        $emailDomain = $emailProfile['domain'];
+        $email = $identityGenerator->email(
+            $persona,
+            $emailDomain,
+            fn (string $candidate): bool => self::withTrashed()->where('email', $candidate)->exists(),
+            $token
+        );
 
         $syntheticUser = self::create([
             'base_user_id' => null,
-            'name' => $username,
+            'name' => (string) $persona['display_name'],
             'first_name' => $persona['first_name'] ?? null,
             'last_name' => $persona['last_name'] ?? null,
             'username' => $username,
@@ -70,7 +82,7 @@ class SyntheticRatingUser extends Model
                 'name_mode' => $nameMode,
                 'email_profile' => [
                     'domain' => $emailDomain,
-                    'source' => $emailDomain === 'example.invalid' ? 'fallback' : 'rating_analysis',
+                    'source' => $emailProfile['source'],
                     'excluded_domains' => self::excludedEmailDomains(),
                 ],
                 'privacy_settings' => $privacySettings,
@@ -109,17 +121,26 @@ class SyntheticRatingUser extends Model
         $profile = is_array($profile) ? $profile : [];
         $email = (string) ($profile['email'] ?? '');
 
-        if (self::isSynthetic2261Email($email)) {
+        if (self::isUsableSyntheticEmail($email)) {
             $nameMode = self::syntheticUserNameMode();
             $privacySettings = data_get($profile, 'privacy_settings', self::privacySettingsFromAnalysis());
             $privacySettings = is_array($privacySettings) ? $privacySettings : self::privacySettingsFromAnalysis();
             $privacySettings = self::privacySettingsForNameMode($privacySettings, $nameMode);
             $persona = data_get($profile, 'persona');
+            $identityGenerator = new SyntheticIdentityGenerator;
             $persona = is_array($persona)
                 ? $persona
-                : self::syntheticPersona($privacySettings, $nameMode);
+                : $identityGenerator->persona($privacySettings);
             $profileName = (string) ($persona['display_name'] ?? $profile['name'] ?? 'Anonyme Testperson');
-            $username = self::usernameFromPersona($persona, (string) Str::random(12));
+            $username = (string) ($profile['username'] ?? '');
+
+            if ($username === '') {
+                $username = $identityGenerator->username(
+                    $persona,
+                    fn (string $candidate): bool => self::withTrashed()->where('username', $candidate)->exists(),
+                    (string) Str::random(12)
+                );
+            }
 
             if (str_starts_with($profileName, 'Interner Testnutzer 2261')) {
                 $profileName = $persona['display_name'];
@@ -129,11 +150,11 @@ class SyntheticRatingUser extends Model
                 ['email' => $email],
                 [
                     'base_user_id' => $claimRating->base_user_id,
-                    'name' => (string) ($profile['username'] ?? $username),
+                    'name' => $profileName,
                     'first_name' => $persona['first_name'] ?? null,
                     'last_name' => $persona['last_name'] ?? null,
-                    'username' => (string) ($profile['username'] ?? $username),
-                    'email_domain' => self::domainFromEmail($email) ?? 'example.invalid',
+                    'username' => $username,
+                    'email_domain' => self::domainFromEmail($email),
                     'role' => (string) ($profile['role'] ?? 'guest'),
                     'status' => (bool) ($profile['status'] ?? true),
                     'email_verified_at' => (string) ($profile['email_verified_at'] ?? now()->toDateTimeString()),
@@ -145,7 +166,7 @@ class SyntheticRatingUser extends Model
                         'persona' => $persona,
                         'name_mode' => $nameMode,
                         'email_profile' => [
-                            'domain' => self::domainFromEmail($email) ?? 'example.invalid',
+                            'domain' => self::domainFromEmail($email),
                             'source' => data_get($profile, 'email_profile.source', 'planning_profile'),
                             'excluded_domains' => self::excludedEmailDomains(),
                         ],
@@ -330,7 +351,10 @@ class SyntheticRatingUser extends Model
         return 'realistic';
     }
 
-    private static function emailDomainFromAnalysis(): string
+    /**
+     * @return array{domain: string, source: string}
+     */
+    private static function emailDomainProfile(SyntheticIdentityGenerator $identityGenerator): array
     {
         $analysis = Setting::getValue('rating_generation', 'analysis');
         $domains = is_array($analysis)
@@ -358,7 +382,10 @@ class SyntheticRatingUser extends Model
         }
 
         if ($weights === []) {
-            return 'example.invalid';
+            return [
+                'domain' => $identityGenerator->fallbackEmailDomain(),
+                'source' => 'fallback_provider_pool',
+            ];
         }
 
         $target = lcg_value() * array_sum($weights);
@@ -368,11 +395,17 @@ class SyntheticRatingUser extends Model
             $cursor += $weight;
 
             if ($target <= $cursor) {
-                return $domain;
+                return [
+                    'domain' => $domain,
+                    'source' => 'rating_analysis',
+                ];
             }
         }
 
-        return (string) array_key_first($weights);
+        return [
+            'domain' => (string) array_key_first($weights),
+            'source' => 'rating_analysis',
+        ];
     }
 
     /**
@@ -411,173 +444,11 @@ class SyntheticRatingUser extends Model
         return preg_match('/^[a-z0-9.-]+\.[a-z]{2,}$/', $domain) === 1 ? $domain : null;
     }
 
-    private static function syntheticEmail(array $persona, string $token, string $domain): string
-    {
-        $namePart = self::identifierLocalPart($persona, $token, 'email');
-
-        return "{$namePart}@{$domain}";
-    }
-
-    private static function usernameFromPersona(array $persona, string $token): string
-    {
-        return self::identifierLocalPart($persona, $token, 'username');
-    }
-
-    private static function identifierLocalPart(array $persona, string $token, string $target): string
-    {
-        $separator = self::identifierBaseSeparator($target);
-        $firstName = self::identifierSlug((string) ($persona['first_name'] ?? ''));
-        $lastName = self::identifierSlug((string) ($persona['last_name'] ?? ''));
-        $displayName = self::identifierSlug((string) ($persona['alias'] ?? $persona['display_name'] ?? 'testperson'));
-        $city = self::identifierSlug((string) ($persona['city'] ?? ''));
-        $postalArea = preg_replace('/\D+/', '', (string) ($persona['postal_code_area'] ?? '')) ?: '';
-        $customerSinceYear = (int) ($persona['customer_since_year'] ?? 0);
-        $year = $customerSinceYear > 0 ? (string) $customerSinceYear : (string) random_int(2010, (int) now()->format('Y') - 1);
-        $yearShort = substr($year, -2);
-        $firstInitial = substr($firstName, 0, 1);
-        $lastInitial = substr($lastName, 0, 1);
-        $initials = ($firstInitial.$lastInitial) ?: substr(self::identifierTokenSeed($token), 0, 2);
-        $cityShort = $city !== '' ? substr($city, 0, random_int(4, min(8, max(4, strlen($city))))) : '';
-
-        $basePatterns = array_filter([
-            self::identifierJoin([$firstName, $lastName], $separator),
-            self::identifierJoin([$firstName, $lastName], ''),
-            self::identifierJoin([$firstInitial, $lastName], $separator),
-            self::identifierJoin([$firstName, $lastInitial], $separator),
-            self::identifierJoin([$lastName, $firstName], $separator),
-            self::identifierJoin([$lastName, $firstInitial], $separator),
-            self::identifierJoin([$firstName, $yearShort], $separator),
-            self::identifierJoin([$firstName, $cityShort], $separator),
-            self::identifierJoin([$lastName, $postalArea], $separator),
-            self::identifierJoin([$initials, $lastName], $separator),
-            self::identifierJoin([$displayName], $separator),
-        ]);
-
-        $base = (string) $basePatterns[array_rand($basePatterns)];
-        $base = self::cleanIdentifier($base, $separator, 34);
-
-        if ($base === '') {
-            $base = 'testperson';
-        }
-
-        $ending = self::identifierEnding($persona, $token, $target);
-
-        return self::cleanIdentifier($base.$ending, $separator, $target === 'email' ? 48 : 42);
-    }
-
-    private static function identifierJoin(array $parts, string $separator): string
-    {
-        $parts = array_values(array_filter(array_map(
-            fn (mixed $part): string => trim((string) $part, '.-_'),
-            $parts
-        )));
-
-        return implode($separator, $parts);
-    }
-
-    private static function cleanIdentifier(string $value, string $separator, int $limit): string
-    {
-        $separatorPattern = preg_quote($separator === '' ? '.' : $separator, '/');
-        $replacement = $separator === '' ? '' : $separator;
-
-        return Str::of($value)
-            ->ascii()
-            ->lower()
-            ->replaceMatches('/[^a-z0-9]+/', $replacement)
-            ->replaceMatches($separator === '' ? '/[._-]+/' : "/{$separatorPattern}+/", $replacement)
-            ->trim('.-_')
-            ->limit($limit, '')
-            ->trim('.-_')
-            ->toString();
-    }
-
-    private static function identifierEnding(array $persona, string $token, string $target): string
-    {
-        $separator = self::identifierEndingSeparator($target);
-        $seed = self::identifierTokenSeed($token);
-        $seedShort = substr($seed, 0, 4);
-        $seedLong = substr($seed, 0, 7);
-        $firstInitial = substr(self::identifierSlug((string) ($persona['first_name'] ?? '')), 0, 1);
-        $lastInitial = substr(self::identifierSlug((string) ($persona['last_name'] ?? '')), 0, 1);
-        $initials = ($firstInitial.$lastInitial) ?: substr($seed, 0, 2);
-        $city = self::identifierSlug((string) ($persona['city'] ?? ''));
-        $city = $city !== '' ? substr($city, 0, random_int(4, min(8, max(4, strlen($city))))) : '';
-        $postalArea = preg_replace('/\D+/', '', (string) ($persona['postal_code_area'] ?? '')) ?: '';
-        $customerSinceYear = (int) ($persona['customer_since_year'] ?? 0);
-        $year = $customerSinceYear > 0 ? (string) $customerSinceYear : (string) random_int(2010, (int) now()->format('Y') - 1);
-        $yearShort = substr($year, -2);
-        $number2 = (string) random_int(10, 99);
-        $number3 = (string) random_int(100, 999);
-
-        $patterns = array_filter([
-            $seedShort,
-            $seedLong,
-            $number2,
-            $number3,
-            "{$initials}{$number2}",
-            "{$initials}{$seedShort}",
-            "{$yearShort}{$number2}",
-            "{$year}{$number2}",
-            $postalArea !== '' ? "{$postalArea}{$number2}" : null,
-            $city !== '' ? "{$city}{$number2}" : null,
-            $city !== '' ? "{$city}{$separator}{$seedShort}" : null,
-            "{$initials}{$separator}{$yearShort}{$number2}",
-        ]);
-
-        $ending = (string) $patterns[array_rand($patterns)];
-        $ending = trim($ending, '.-_');
-
-        if ($ending === '') {
-            $ending = $seedShort;
-        }
-
-        return $separator.$ending;
-    }
-
-    private static function identifierEndingSeparator(string $target): string
-    {
-        $separators = $target === 'username'
-            ? ['.', '.', '_', '', '-']
-            : ['.', '.', '-', '', ''];
-
-        return $separators[array_rand($separators)];
-    }
-
-    private static function identifierBaseSeparator(string $target): string
-    {
-        $separators = $target === 'username'
-            ? ['.', '.', '_', '-', '']
-            : ['.', '.', '-', '', ''];
-
-        return $separators[array_rand($separators)];
-    }
-
-    private static function identifierTokenSeed(string $token): string
-    {
-        $seed = preg_replace('/[^a-z0-9]/', '', strtolower($token));
-
-        if (! is_string($seed) || strlen($seed) < 7) {
-            $seed = strtolower((string) Str::random(12));
-            $seed = preg_replace('/[^a-z0-9]/', '', $seed) ?: '2261user';
-        }
-
-        return $seed;
-    }
-
-    private static function identifierSlug(string $value): string
-    {
-        return Str::of($value)
-            ->ascii()
-            ->lower()
-            ->replaceMatches('/[^a-z0-9]+/', '')
-            ->toString();
-    }
-
-    private static function isSynthetic2261Email(string $email): bool
+    private static function isUsableSyntheticEmail(string $email): bool
     {
         $domain = self::domainFromEmail($email);
 
-        return str_starts_with($email, 'synthetic-2261-')
+        return filter_var($email, FILTER_VALIDATE_EMAIL) !== false
             && $domain !== null
             && ! self::isExcludedEmailDomain($domain);
     }
@@ -589,153 +460,5 @@ class SyntheticRatingUser extends Model
         }
 
         return self::normalizeEmailDomain(substr(strrchr($email, '@') ?: '', 1));
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private static function syntheticPersona(array $privacySettings, string $nameMode): array
-    {
-        $firstNames = [
-            // Weibliche Namen
-            'Anna', 'Laura', 'Sophie', 'Miriam', 'Nina', 'Katharina', 'Lea', 'Julia',
-            'Sarah', 'Nadine', 'Claudia', 'Melanie', 'Eva', 'Tanja', 'Maren', 'Christina',
-            'Maria', 'Lisa', 'Barbara', 'Petra', 'Sandra', 'Daniela', 'Sabine', 'Angelika',
-            'Silke', 'Doris', 'Christine', 'Monika', 'Elvira', 'Marianne', 'Renate', 'Gisela',
-            'Kerstin', 'Susanne', 'Heike', 'Beate', 'Ingrid', 'Ursula', 'Helene', 'Karin',
-            'Martina', 'Birgit', 'Michaela', 'Cornelia', 'Sylvia', 'Vera', 'Annette', 'Brigitte',
-            'Christiane', 'Annegret', 'Inge', 'Edith', 'Heidrun', 'Margot', 'Sigrid', 'Waltraud',
-            'Liesbeth', 'Gerda', 'Marlene', 'Rosemarie', 'Lieselotte', 'Christa', 'Karlotta', 'Anika',
-            // Männliche Namen
-            'Michael', 'Daniel', 'Thomas', 'Stefan', 'Markus', 'Jan', 'Lukas', 'Tim',
-            'Christian', 'Andreas', 'Sebastian', 'Florian', 'Matthias', 'Philipp', 'Martin', 'Oliver',
-            'Robert', 'Klaus', 'Rainer', 'Werner', 'Helmut', 'Dieter', 'Gerhard', 'Frank',
-            'Hans', 'Horst', 'Juergen', 'Wolfgang', 'Bernhard', 'Friedrich', 'Karl', 'Alfons',
-            'Hermann', 'Siegfried', 'Erwin', 'Wilfried', 'Edmund', 'Armin', 'Bruno', 'Udo',
-            'Lothar', 'Gunter', 'Günther', 'Norbert', 'Heinz', 'Josef', 'Hubert', 'Alwin',
-            'Erich', 'Oswald', 'Theodor', 'Leonhard', 'Willi', 'Otto', 'Adolf', 'Heribert',
-            'Eckhard', 'Guenther', 'Reinhardt', 'Konrad', 'Eduard', 'Manfred', 'Wilmar', 'Volkmar',
-        ];
-        $lastNames = [
-            'Meyer', 'Schneider', 'Fischer', 'Weber', 'Hoffmann', 'Wagner', 'Becker',
-            'Schulz', 'Koch', 'Richter', 'Klein', 'Wolf', 'Neumann', 'Zimmermann',
-            'Hartmann', 'Schmitt', 'Werner', 'Schmitz', 'Krueger', 'Lange', 'Schroeder',
-            'Krause', 'Lehmann', 'Huber', 'Maier', 'Fuchs', 'Peters', 'Lang',
-            'Mueller', 'Braun', 'Keller', 'Hoffmann', 'Schutz', 'Baum', 'Groß',
-            'Loewe', 'Baecker', 'Hahn', 'Kramer', 'Germann', 'Heuer', 'Handler',
-            'Beck', 'Gaertner', 'Raabe', 'Siegel', 'Knab', 'Steiner', 'Roth',
-            'Seitz', 'Mayer', 'Erwin', 'Stieglitz', 'Ploch', 'Ostrowski', 'Sauer',
-            'Zimmerman', 'Meier', 'Beier', 'Beyer', 'Kaiser', 'Kirst', 'Kister',
-            'Klausen', 'Klasen', 'Klaus', 'Klausing', 'Klausnitzer', 'Klauss', 'Klaussman',
-            'Scholz', 'Scholl', 'Schueler', 'Schueller', 'Schuhmann', 'Schuller', 'Schulte',
-            'Schultze', 'Schuster', 'Schwaab', 'Schwabe', 'Schwab', 'Schwack', 'Schwager',
-            'Schwalbe', 'Schwaller', 'Schwamm', 'Schwammberger', 'Schwander', 'Schwandt', 'Schwab',
-            'Rienecker', 'Riedle', 'Riegel', 'Riehle', 'Rieker', 'Riel', 'Rieprich',
-            'Riese', 'Riesinger', 'Riesselman', 'Riewald', 'Riewe', 'Riffel', 'Rige',
-        ];
-        $regions = [
-            // Nordrhein-Westfalen
-            ['state' => 'Nordrhein-Westfalen', 'city' => 'Koeln', 'postal_code_area' => '50xxx'],
-            ['state' => 'Nordrhein-Westfalen', 'city' => 'Dortmund', 'postal_code_area' => '44xxx'],
-            ['state' => 'Nordrhein-Westfalen', 'city' => 'Duesseldorf', 'postal_code_area' => '40xxx'],
-            ['state' => 'Nordrhein-Westfalen', 'city' => 'Essen', 'postal_code_area' => '45xxx'],
-            ['state' => 'Nordrhein-Westfalen', 'city' => 'Duisburg', 'postal_code_area' => '47xxx'],
-            ['state' => 'Nordrhein-Westfalen', 'city' => 'Bochum', 'postal_code_area' => '44xxx'],
-            ['state' => 'Nordrhein-Westfalen', 'city' => 'Gelsenkirchen', 'postal_code_area' => '45xxx'],
-            ['state' => 'Nordrhein-Westfalen', 'city' => 'Muenster', 'postal_code_area' => '48xxx'],
-            // Bayern
-            ['state' => 'Bayern', 'city' => 'Nuernberg', 'postal_code_area' => '90xxx'],
-            ['state' => 'Bayern', 'city' => 'Muenchen', 'postal_code_area' => '80xxx'],
-            ['state' => 'Bayern', 'city' => 'Regensburg', 'postal_code_area' => '93xxx'],
-            ['state' => 'Bayern', 'city' => 'Augsburg', 'postal_code_area' => '86xxx'],
-            ['state' => 'Bayern', 'city' => 'Wuerzburg', 'postal_code_area' => '97xxx'],
-            ['state' => 'Bayern', 'city' => 'Bamberg', 'postal_code_area' => '96xxx'],
-            ['state' => 'Bayern', 'city' => 'Ansbach', 'postal_code_area' => '91xxx'],
-            ['state' => 'Bayern', 'city' => 'Bayreuth', 'postal_code_area' => '95xxx'],
-            // Hessen
-            ['state' => 'Hessen', 'city' => 'Frankfurt am Main', 'postal_code_area' => '60xxx'],
-            ['state' => 'Hessen', 'city' => 'Wiesbaden', 'postal_code_area' => '65xxx'],
-            ['state' => 'Hessen', 'city' => 'Darmstadt', 'postal_code_area' => '64xxx'],
-            ['state' => 'Hessen', 'city' => 'Kassel', 'postal_code_area' => '34xxx'],
-            ['state' => 'Hessen', 'city' => 'Offenbach am Main', 'postal_code_area' => '63xxx'],
-            ['state' => 'Hessen', 'city' => 'Marburg', 'postal_code_area' => '35xxx'],
-            // Sachsen
-            ['state' => 'Sachsen', 'city' => 'Leipzig', 'postal_code_area' => '04xxx'],
-            ['state' => 'Sachsen', 'city' => 'Dresden', 'postal_code_area' => '01xxx'],
-            ['state' => 'Sachsen', 'city' => 'Chemnitz', 'postal_code_area' => '09xxx'],
-            ['state' => 'Sachsen', 'city' => 'Zwickau', 'postal_code_area' => '08xxx'],
-            ['state' => 'Sachsen', 'city' => 'Plauen', 'postal_code_area' => '08xxx'],
-            // Niedersachsen
-            ['state' => 'Niedersachsen', 'city' => 'Hannover', 'postal_code_area' => '30xxx'],
-            ['state' => 'Niedersachsen', 'city' => 'Braunschweig', 'postal_code_area' => '38xxx'],
-            ['state' => 'Niedersachsen', 'city' => 'Goettingen', 'postal_code_area' => '37xxx'],
-            ['state' => 'Niedersachsen', 'city' => 'Osnabrueck', 'postal_code_area' => '49xxx'],
-            ['state' => 'Niedersachsen', 'city' => 'Oldenburg', 'postal_code_area' => '26xxx'],
-            // Baden-Württemberg
-            ['state' => 'Baden-Wuerttemberg', 'city' => 'Stuttgart', 'postal_code_area' => '70xxx'],
-            ['state' => 'Baden-Wuerttemberg', 'city' => 'Karlsruhe', 'postal_code_area' => '76xxx'],
-            ['state' => 'Baden-Wuerttemberg', 'city' => 'Heidelberg', 'postal_code_area' => '69xxx'],
-            ['state' => 'Baden-Wuerttemberg', 'city' => 'Ulm', 'postal_code_area' => '89xxx'],
-            ['state' => 'Baden-Wuerttemberg', 'city' => 'Mannheim', 'postal_code_area' => '68xxx'],
-            ['state' => 'Baden-Wuerttemberg', 'city' => 'Freiburg', 'postal_code_area' => '79xxx'],
-            // Bremen, Hamburg, Berlin
-            ['state' => 'Hamburg', 'city' => 'Hamburg', 'postal_code_area' => '20xxx'],
-            ['state' => 'Berlin', 'city' => 'Berlin', 'postal_code_area' => '10xxx'],
-            ['state' => 'Bremen', 'city' => 'Bremen', 'postal_code_area' => '28xxx'],
-            // Schleswig-Holstein
-            ['state' => 'Schleswig-Holstein', 'city' => 'Kiel', 'postal_code_area' => '24xxx'],
-            ['state' => 'Schleswig-Holstein', 'city' => 'Luebeck', 'postal_code_area' => '23xxx'],
-            // Brandenburg
-            ['state' => 'Brandenburg', 'city' => 'Potsdam', 'postal_code_area' => '14xxx'],
-            ['state' => 'Brandenburg', 'city' => 'Cottbus', 'postal_code_area' => '03xxx'],
-            // Mecklenburg-Vorpommern
-            ['state' => 'Mecklenburg-Vorpommern', 'city' => 'Rostock', 'postal_code_area' => '18xxx'],
-            ['state' => 'Mecklenburg-Vorpommern', 'city' => 'Schwerin', 'postal_code_area' => '19xxx'],
-            // Rheinland-Pfalz
-            ['state' => 'Rheinland-Pfalz', 'city' => 'Mainz', 'postal_code_area' => '55xxx'],
-            ['state' => 'Rheinland-Pfalz', 'city' => 'Ludwigshafen am Rhein', 'postal_code_area' => '67xxx'],
-        ];
-        $ageRanges = ['25-34', '35-44', '45-54', '55-64', '65+'];
-        $households = ['Single-Haushalt', 'Paar ohne Kinder', 'Familie mit Kindern', 'Mehrpersonenhaushalt'];
-        $contactPreferences = ['E-Mail', 'Telefon', 'Kundenportal', 'Brief'];
-        $insuranceExperience = ['erstmaliger Schadenfall', 'gelegentliche Schadenfaelle', 'mehrere Vorfaelle in den letzten Jahren'];
-        $devices = ['Smartphone', 'Notebook', 'Desktop', 'Tablet'];
-        $occupations = ['Angestellt', 'Selbststaendig', 'Oeffentlicher Dienst', 'Ausbildung/Studium', 'Rentner/in'];
-        $availabilityWindows = ['morgens', 'mittags', 'nachmittags', 'abends'];
-        $customerSinceYears = range((int) now()->format('Y') - 18, (int) now()->format('Y') - 1);
-        $claimChannels = ['Online-Portal', 'Telefon', 'E-Mail', 'Makler/Vermittler', 'Filiale'];
-
-        $firstName = $firstNames[array_rand($firstNames)];
-        $lastName = $lastNames[array_rand($lastNames)];
-        $region = $regions[array_rand($regions)];
-        $ageRange = $ageRanges[array_rand($ageRanges)];
-        $ratingsNameVisibility = data_get($privacySettings, 'ratings.name_visibility', 'none');
-        $visibleName = "{$firstName} {$lastName}";
-
-        return [
-            'synthetic_marker' => '2261-better-testperson',
-            'name_mode' => 'realistic',
-            'first_name' => $firstName,
-            'last_name' => $lastName,
-            'alias' => null,
-            'display_name' => $visibleName,
-
-            'age_range' => $ageRange,
-            'region' => $region['state'],
-            'city' => $region['city'],
-            'postal_code_area' => $region['postal_code_area'],
-            'household_type' => $households[array_rand($households)],
-            'occupation_group' => $occupations[array_rand($occupations)],
-            'preferred_contact_channel' => $contactPreferences[array_rand($contactPreferences)],
-            'usual_claim_channel' => $claimChannels[array_rand($claimChannels)],
-            'insurance_experience' => $insuranceExperience[array_rand($insuranceExperience)],
-            'customer_since_year' => $customerSinceYears[array_rand($customerSinceYears)],
-            'availability_window' => $availabilityWindows[array_rand($availabilityWindows)],
-            'device_context' => $devices[array_rand($devices)],
-            'language' => 'de',
-            'timezone' => 'Europe/Berlin',
-            'is_named_publicly' => $ratingsNameVisibility !== 'none',
-            'note' => 'Fiktives internes Testprofil ohne reale Personendaten.',
-        ];
     }
 }
