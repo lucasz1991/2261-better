@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Models\ClaimRating;
 use App\Models\SyntheticRatingUser;
 use App\Support\Rating\SyntheticIdentityGenerator;
 use Illuminate\Database\Schema\Blueprint;
@@ -52,7 +53,8 @@ class SyntheticIdentityGeneratorTest extends TestCase
             $this->assertGreaterThanOrEqual((int) $persona['birth_year'] + 18, (int) $persona['customer_since_year']);
             $this->assertLessThanOrEqual(2025, (int) $persona['customer_since_year']);
             $this->assertSame(2026 - (int) $persona['customer_since_year'], $persona['customer_tenure_years']);
-            $this->assertSame(3, $persona['identity_version']);
+            $this->assertSame(5, $persona['identity_version']);
+            $this->assertSame('pseudonym_with_optional_context', $persona['username_mode']);
             $this->assertSame(
                 trim($persona['first_name'].' '.$persona['last_name']),
                 $persona['display_name']
@@ -122,6 +124,28 @@ class SyntheticIdentityGeneratorTest extends TestCase
         }
     }
 
+    public function test_every_supported_city_has_realistic_username_codes(): void
+    {
+        $reflection = new \ReflectionClass(SyntheticIdentityGenerator::class);
+        $regions = $reflection->getConstant('REGIONS');
+        $locationCodes = $reflection->getConstant('USERNAME_LOCATION_CODES');
+        $cities = array_unique(array_column($regions, 'city'));
+
+        $this->assertCount(count($cities), $locationCodes);
+
+        foreach ($cities as $city) {
+            $this->assertArrayHasKey($city, $locationCodes);
+            $this->assertCount(2, $locationCodes[$city]);
+
+            foreach ($locationCodes[$city] as $code) {
+                $this->assertMatchesRegularExpression('/^[a-z0-9]{1,5}$/', $code);
+            }
+        }
+
+        $this->assertSame(['hh', '040'], $locationCodes['Hamburg']);
+        $this->assertSame(['b', '030'], $locationCodes['Berlin']);
+    }
+
     public function test_usernames_and_emails_are_unique_varied_and_marker_free(): void
     {
         $usernames = [];
@@ -152,6 +176,8 @@ class SyntheticIdentityGeneratorTest extends TestCase
             $this->assertStringNotContainsString('synthetic', $username.$email);
             $this->assertStringNotContainsString('2261', $username.$email);
             $this->assertStringNotContainsString('example.invalid', $email);
+            $this->assertUsernameDoesNotRevealPersonaName($username, $persona);
+            $this->assertTrue($this->generator->isPseudonymUsername($persona, $username));
 
             $usernames[$username] = true;
             $emails[$email] = true;
@@ -170,6 +196,74 @@ class SyntheticIdentityGeneratorTest extends TestCase
         $this->assertCount(4, array_filter($structures));
         $this->assertGreaterThanOrEqual(12, $aliasUsernames);
         $this->assertGreaterThanOrEqual(2, $aliasEmails);
+    }
+
+    public function test_username_generation_rejects_name_based_aliases_and_pool_collisions(): void
+    {
+        $persona = [
+            'first_name' => 'Wald',
+            'last_name' => 'Fuchs-Berg',
+            'birth_year' => 1988,
+            'customer_since_year' => 2014,
+            'username_alias' => 'wald.fuchs.berg1988',
+        ];
+        $usernames = [];
+
+        $this->assertFalse($this->generator->isPseudonymUsername($persona, 'wald.fuchs88'));
+        $this->assertFalse($this->generator->isPseudonymUsername($persona, 'wf88'));
+        $this->assertFalse($this->generator->isPseudonymUsername($persona, 'berg2014'));
+        $this->assertTrue($this->generator->isPseudonymUsername($persona, 'ruhepol'));
+        $this->assertTrue($this->generator->isPseudonymUsername($persona, 'ruhepol_wfb88'));
+
+        for ($i = 0; $i < 200; $i++) {
+            $username = $this->generator->username(
+                $persona,
+                fn (string $candidate): bool => isset($usernames[$candidate]),
+                Str::random(12)
+            );
+
+            $this->assertUsernameDoesNotRevealPersonaName($username, $persona);
+            $this->assertTrue($this->generator->isPseudonymUsername($persona, $username));
+            $usernames[$username] = true;
+        }
+
+        $this->assertCount(200, $usernames);
+    }
+
+    public function test_usernames_can_include_initials_birth_short_and_real_location_codes(): void
+    {
+        $persona = [
+            'first_name' => 'Xaver',
+            'last_name' => 'Quendler',
+            'birth_year' => 1977,
+            'customer_since_year' => 2014,
+            'city' => 'Hamburg',
+            'username_alias' => 'abendfeder',
+        ];
+        $usernames = [];
+        $contexts = ['initials' => 0, 'birth_short' => 0, 'location' => 0];
+
+        for ($i = 0; $i < 600; $i++) {
+            $username = $this->generator->username(
+                $persona,
+                fn (string $candidate): bool => isset($usernames[$candidate]),
+                Str::random(12)
+            );
+            $normalizedUsername = $this->normalizedIdentifier($username);
+
+            $this->assertTrue($this->generator->isPseudonymUsername($persona, $username));
+            $this->assertUsernameDoesNotRevealPersonaName($username, $persona);
+
+            $contexts['initials'] += str_contains($normalizedUsername, 'xq') ? 1 : 0;
+            $contexts['birth_short'] += str_ends_with($normalizedUsername, '77') ? 1 : 0;
+            $contexts['location'] += str_contains($normalizedUsername, 'hh') || str_contains($normalizedUsername, '040') ? 1 : 0;
+            $usernames[$username] = true;
+        }
+
+        $this->assertCount(600, $usernames);
+        $this->assertGreaterThanOrEqual(45, $contexts['initials']);
+        $this->assertGreaterThanOrEqual(45, $contexts['birth_short']);
+        $this->assertGreaterThanOrEqual(45, $contexts['location']);
     }
 
     public function test_fallback_email_providers_are_varied_and_realistic(): void
@@ -212,6 +306,33 @@ class SyntheticIdentityGeneratorTest extends TestCase
         $this->assertSame(5, $checks);
         $this->assertMatchesRegularExpression('/^[a-z0-9][a-z0-9._-]+$/', $username);
         $this->assertStringNotContainsString('collisiontoken', $username);
+        $this->assertUsernameDoesNotRevealPersonaName($username, $persona);
+        $this->assertTrue($this->generator->isPseudonymUsername($persona, $username));
+    }
+
+    public function test_username_fallback_after_many_collisions_stays_a_pseudonym(): void
+    {
+        $persona = [
+            'first_name' => 'Anna',
+            'last_name' => 'Schneider',
+            'birth_year' => 1988,
+            'customer_since_year' => 2014,
+        ];
+        $checks = 0;
+
+        $username = $this->generator->username(
+            $persona,
+            function (string $candidate) use (&$checks): bool {
+                $checks++;
+
+                return $checks <= 64;
+            },
+            'fallbacktoken'
+        );
+
+        $this->assertSame(65, $checks);
+        $this->assertTrue($this->generator->isPseudonymUsername($persona, $username));
+        $this->assertStringNotContainsString('fallbacktoken', $username);
     }
 
     public function test_model_stores_a_real_display_name_but_keeps_internal_synthetic_metadata(): void
@@ -227,10 +348,47 @@ class SyntheticIdentityGeneratorTest extends TestCase
         $this->assertNotSame($syntheticUser->name, $syntheticUser->username);
         $this->assertTrue($syntheticUser->data['synthetic']);
         $this->assertSame('2261-better-testperson', $persona['synthetic_marker']);
-        $this->assertSame(3, $persona['identity_version']);
+        $this->assertSame(5, $persona['identity_version']);
+        $this->assertSame('pseudonym_with_optional_context', $persona['username_mode']);
         $this->assertSame('fallback_provider_pool', $syntheticUser->data['email_profile']['source']);
         $this->assertStringNotContainsString('synthetic', $syntheticUser->username.$syntheticUser->email);
         $this->assertStringNotContainsString('2261', $syntheticUser->username.$syntheticUser->email);
+        $this->assertUsernameDoesNotRevealPersonaName($syntheticUser->username, $persona);
+        $this->assertTrue($this->generator->isPseudonymUsername($persona, $syntheticUser->username));
+    }
+
+    public function test_legacy_planning_profile_gets_a_new_pseudonym_instead_of_reusing_its_name_based_username(): void
+    {
+        $this->configureModelDatabase();
+        $persona = [
+            'first_name' => 'Anna',
+            'last_name' => 'Schneider',
+            'display_name' => 'Anna Schneider',
+            'birth_year' => 1988,
+            'customer_since_year' => 2014,
+        ];
+        $claimRating = ClaimRating::create([
+            'data' => [
+                'planning' => [
+                    'synthetic_user_profile' => [
+                        'name' => 'Anna Schneider',
+                        'username' => 'anna.schneider88',
+                        'email' => 'anna.schneider88@gmx.de',
+                        'persona' => $persona,
+                        'privacy_settings' => [
+                            'ratings' => ['name_visibility' => 'all', 'avatar_visibility' => 'none'],
+                            'comments' => ['name_visibility' => 'all', 'avatar_visibility' => 'none'],
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $syntheticUser = SyntheticRatingUser::ensureForClaimRating($claimRating);
+
+        $this->assertNotSame('anna.schneider88', $syntheticUser->username);
+        $this->assertTrue($this->generator->isPseudonymUsername($persona, $syntheticUser->username));
+        $this->assertSame($syntheticUser->id, $claimRating->fresh()->synthetic_rating_user_id);
     }
 
     /**
@@ -266,6 +424,45 @@ class SyntheticIdentityGeneratorTest extends TestCase
         };
     }
 
+    /**
+     * @param  array<string, mixed>  $persona
+     */
+    private function assertUsernameDoesNotRevealPersonaName(string $username, array $persona): void
+    {
+        $normalizedUsername = $this->normalizedIdentifier($username);
+        $nameComponents = [];
+
+        foreach (['first_name', 'last_name'] as $field) {
+            $rawName = trim((string) ($persona[$field] ?? ''));
+            $fullName = $this->normalizedIdentifier($rawName);
+
+            if (strlen($fullName) >= 3) {
+                $nameComponents[] = $fullName;
+            }
+
+            foreach (preg_split('/[\s-]+/u', $rawName) ?: [] as $part) {
+                $part = $this->normalizedIdentifier($part);
+
+                if (strlen($part) >= 3) {
+                    $nameComponents[] = $part;
+                }
+            }
+        }
+
+        foreach (array_unique($nameComponents) as $nameComponent) {
+            $this->assertStringNotContainsString($nameComponent, $normalizedUsername);
+        }
+    }
+
+    private function normalizedIdentifier(string $value): string
+    {
+        return Str::of($value)
+            ->ascii()
+            ->lower()
+            ->replaceMatches('/[^a-z0-9]+/', '')
+            ->toString();
+    }
+
     private function configureModelDatabase(): void
     {
         config()->set('database.default', 'synthetic_identity_test');
@@ -299,6 +496,15 @@ class SyntheticIdentityGeneratorTest extends TestCase
             $table->string('role')->default('guest');
             $table->boolean('status')->default(true);
             $table->timestamp('email_verified_at')->nullable();
+            $table->json('data')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+        });
+
+        Schema::connection('synthetic_identity_test')->create('claim_ratings', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('base_user_id')->nullable();
+            $table->unsignedBigInteger('synthetic_rating_user_id')->nullable();
             $table->json('data')->nullable();
             $table->timestamps();
             $table->softDeletes();

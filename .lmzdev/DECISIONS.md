@@ -23,3 +23,17 @@ Record durable decisions with date, context, decision, and consequences.
 - Every general and additional age-specific first-name pool receives a separate expansion with exactly as many unique entries as its original source pool.
 - Every surname pool is expanded by the same rule; mixed-family selection uses the combined expanded surname inventory.
 - Expansions remain separate constants so original data, added data, exact growth, and duplicate checks stay auditable.
+
+## 2026-08-29 | Non-personal username pseudonyms
+
+- Username generation is separated from email-local-part generation and no longer receives name-, initial-, city-, birth-year-, or customer-year-based patterns.
+- Usernames combine curated aliases with semantically compatible modifier/subject pools and optional non-personal numbers.
+- A final validator rejects accidental first-name or surname substrings and personal year values, including collision and fallback paths.
+- Legacy planning profiles are revalidated before materialization; existing linked synthetic users are not renamed automatically.
+
+## 2026-08-29 | Pseudonym usernames with optional context
+
+- Every generated username retains a recognized pseudonym base; initials, location, or birth-year data may only be appended as context.
+- Weighted context variants include initials, two-digit birth year, location code, arbitrary non-personal numbers, and combinations of these values.
+- All 84 supported cities map to a common vehicle-style abbreviation and a real telephone area code, including `hh/040` for Hamburg and `b/030` for Berlin.
+- Full first names and surnames remain forbidden, while the validator now accepts allowed context suffixes.

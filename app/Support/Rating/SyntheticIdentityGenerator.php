@@ -412,33 +412,147 @@ final class SyntheticIdentityGenerator
     ];
 
     private const USERNAME_ALIASES = [
-        'abendrot', 'bergfreund', 'bergzeit', 'elbezeit', 'familienmensch', 'fernweh',
-        'freiraum', 'gartenzeit', 'glückskind', 'hafenblick', 'heimathafen', 'kaffeepause',
-        'küstenkind', 'landluft', 'leseratte', 'lichtblick', 'mainblick', 'moinmoin',
-        'morgenkaffee', 'naturzeit', 'nordlicht', 'rheinblick', 'ruhrpottkind', 'seebrise',
-        'sonnenseite', 'stadtfuchs', 'stadtmensch', 'waldzeit', 'wellenreiter', 'wolkenlos',
+        'abendfeder', 'abendfunke', 'abendrot', 'achtsamzeit', 'ankerplatz', 'bergfeder',
+        'bergfreund', 'bergpfad', 'bergzeit', 'blattwerk', 'buchfunke', 'buntgedacht',
+        'farbenfroh', 'federleicht', 'fernweh', 'freiraum', 'frischebrise', 'funkenflug',
+        'gartenzeit', 'gedankenflug', 'glückskind', 'goldmoment', 'grünefeder', 'hafenblick',
+        'heimathafen', 'horizontblick', 'kaffeefunke', 'kaffeepause', 'klarerblick',
+        'kleineauszeit', 'kopfkino', 'küstenkind', 'landluft', 'lesefuchs', 'leseratte',
+        'lichtblick', 'luftsprung', 'mondfeder', 'morgenfunke', 'morgenkaffee', 'morgenlicht',
+        'naturzeit', 'neustart', 'nordlicht', 'pfadfinder', 'pixelpause', 'regenbogen',
+        'reiselust', 'ruhepol', 'seebrise', 'seelenruhe', 'sonnenseite', 'sternenblick',
+        'stadtfuchs', 'stadtmensch', 'tagtraum', 'tassenheld', 'tiefgang', 'traumfeder',
+        'uferlicht', 'waldfeder', 'waldfreund', 'waldfunke', 'waldpfad', 'waldzeit',
+        'wanderfunke', 'wegbegleiter', 'wellenklang', 'wellenreiter', 'weitsicht', 'windspiel',
+        'wolkenfeder', 'wolkenlos', 'wolkenpfad', 'wortfuchs', 'wortsammler', 'zeichenwind',
+        'zeitreise', 'zeitfenster', 'zeitgeist', 'zeitlos', 'zuversicht',
     ];
 
-    private const USERNAME_PATTERNS = [
-        'first_dot_last' => 17,
-        'first_last' => 9,
-        'firstlast' => 10,
-        'initial_dot_last' => 8,
-        'first_dot_initial' => 5,
-        'last_dot_first' => 6,
-        'first_dash_last' => 4,
-        'first_birth_short' => 6,
-        'last_birth_short' => 5,
-        'first_city' => 4,
-        'initials_birth_short' => 4,
-        'first_number' => 5,
-        'last_initial' => 4,
-        'initials' => 3,
-        'last_first_initial' => 4,
-        'first_last_number' => 3,
-        'alias_word' => 5,
-        'alias_word_number' => 4,
-        'first_alias' => 3,
+    private const USERNAME_PSEUDONYM_MODIFIERS = [
+        'achtsamer', 'bunter', 'echter', 'entspannter', 'federleichter', 'flinker', 'freier',
+        'froher', 'geduldiger', 'gelassener', 'heiterer', 'heller', 'klarer', 'kreativer',
+        'leiser', 'lockerer', 'mutiger', 'neugieriger', 'offener', 'ruhiger', 'sanfter',
+        'sonniger', 'spontaner', 'treuer', 'wacher', 'wilder', 'zeitloser', 'zuversichtlicher',
+    ];
+
+    private const USERNAME_PSEUDONYM_SUBJECTS = [
+        'anker', 'bergfink', 'buchfreund', 'dachs', 'denker', 'entdecker', 'falke', 'freigeist',
+        'fuchs', 'gartenfreund', 'globus', 'hafenlotse', 'komet', 'lebenskünstler',
+        'lesefreund', 'lichtsucher', 'lotse', 'morgenmensch', 'nachtdenker', 'otter',
+        'pfadfinder', 'pixelpilot', 'radler', 'segler', 'sternsucher', 'spurensucher',
+        'tagträumer', 'wanderer', 'wegbegleiter', 'weltenbummler', 'windreiter', 'wolkenjäger',
+        'wortsammler', 'zeitreisender',
+    ];
+
+    private const USERNAME_PSEUDONYM_PATTERNS = [
+        'curated_alias' => 40,
+        'modifier_subject' => 42,
+        'subject_modifier' => 18,
+    ];
+
+    private const USERNAME_CONTEXT_PATTERN_WEIGHTS = [
+        'none' => 36,
+        'random_number' => 12,
+        'birth_short' => 14,
+        'initials' => 10,
+        'location_code' => 12,
+        'initials_birth' => 6,
+        'location_birth' => 6,
+        'initials_location' => 4,
+    ];
+
+    private const USERNAME_SEPARATOR_WEIGHTS = [
+        'compact' => 45,
+        'dot' => 22,
+        'underscore' => 21,
+        'dash' => 12,
+    ];
+
+    private const USERNAME_LOCATION_CODES = [
+        'Köln' => ['k', '0221'],
+        'Düsseldorf' => ['d', '0211'],
+        'Dortmund' => ['do', '0231'],
+        'Essen' => ['e', '0201'],
+        'Bonn' => ['bn', '0228'],
+        'Münster' => ['ms', '0251'],
+        'Bielefeld' => ['bi', '0521'],
+        'Duisburg' => ['du', '0203'],
+        'Bochum' => ['bo', '0234'],
+        'Wuppertal' => ['w', '0202'],
+        'Aachen' => ['ac', '0241'],
+        'Mönchengladbach' => ['mg', '02161'],
+        'Paderborn' => ['pb', '05251'],
+        'Siegen' => ['si', '0271'],
+        'München' => ['m', '089'],
+        'Nürnberg' => ['n', '0911'],
+        'Augsburg' => ['a', '0821'],
+        'Regensburg' => ['r', '0941'],
+        'Würzburg' => ['wue', '0931'],
+        'Ingolstadt' => ['in', '0841'],
+        'Bamberg' => ['ba', '0951'],
+        'Bayreuth' => ['bt', '0921'],
+        'Landshut' => ['la', '0871'],
+        'Rosenheim' => ['ro', '08031'],
+        'Stuttgart' => ['s', '0711'],
+        'Mannheim' => ['ma', '0621'],
+        'Karlsruhe' => ['ka', '0721'],
+        'Freiburg' => ['fr', '0761'],
+        'Heidelberg' => ['hd', '06221'],
+        'Ulm' => ['ul', '0731'],
+        'Heilbronn' => ['hn', '07131'],
+        'Reutlingen' => ['rt', '07121'],
+        'Konstanz' => ['kn', '07531'],
+        'Frankfurt am Main' => ['ffm', '069'],
+        'Wiesbaden' => ['wi', '0611'],
+        'Kassel' => ['ks', '0561'],
+        'Darmstadt' => ['da', '06151'],
+        'Offenbach am Main' => ['of', '069'],
+        'Gießen' => ['gi', '0641'],
+        'Fulda' => ['fd', '0661'],
+        'Marburg' => ['mr', '06421'],
+        'Hannover' => ['h', '0511'],
+        'Braunschweig' => ['bs', '0531'],
+        'Osnabrück' => ['os', '0541'],
+        'Oldenburg' => ['ol', '0441'],
+        'Göttingen' => ['goe', '0551'],
+        'Wolfsburg' => ['wob', '05361'],
+        'Lüneburg' => ['lg', '04131'],
+        'Hildesheim' => ['hi', '05121'],
+        'Leipzig' => ['l', '0341'],
+        'Dresden' => ['dd', '0351'],
+        'Chemnitz' => ['c', '0371'],
+        'Zwickau' => ['z', '0375'],
+        'Görlitz' => ['gr', '03581'],
+        'Mainz' => ['mz', '06131'],
+        'Koblenz' => ['ko', '0261'],
+        'Trier' => ['tr', '0651'],
+        'Ludwigshafen am Rhein' => ['lu', '0621'],
+        'Kaiserslautern' => ['kl', '0631'],
+        'Kiel' => ['ki', '0431'],
+        'Lübeck' => ['hl', '0451'],
+        'Flensburg' => ['fl', '0461'],
+        'Norderstedt' => ['se', '040'],
+        'Potsdam' => ['p', '0331'],
+        'Cottbus' => ['cb', '0355'],
+        'Brandenburg an der Havel' => ['brb', '03381'],
+        'Frankfurt (Oder)' => ['ffo', '0335'],
+        'Rostock' => ['hro', '0381'],
+        'Schwerin' => ['sn', '0385'],
+        'Greifswald' => ['hgw', '03834'],
+        'Neubrandenburg' => ['nb', '0395'],
+        'Magdeburg' => ['md', '0391'],
+        'Halle' => ['hal', '0345'],
+        'Dessau-Roßlau' => ['de', '0340'],
+        'Erfurt' => ['ef', '0361'],
+        'Jena' => ['j', '03641'],
+        'Gera' => ['g', '0365'],
+        'Weimar' => ['we', '03643'],
+        'Saarbrücken' => ['sb', '0681'],
+        'Neunkirchen' => ['nk', '06821'],
+        'Berlin' => ['b', '030'],
+        'Hamburg' => ['hh', '040'],
+        'Bremen' => ['hb', '0421'],
+        'Bremerhaven' => ['bhv', '0471'],
     ];
 
     private const EMAIL_PATTERNS = [
@@ -507,8 +621,9 @@ final class SyntheticIdentityGenerator
 
         return [
             'synthetic_marker' => '2261-better-testperson',
-            'identity_version' => 3,
+            'identity_version' => 5,
             'name_mode' => 'realistic',
+            'username_mode' => 'pseudonym_with_optional_context',
             'name_set' => $nameSet,
             'first_name' => $firstName,
             'last_name' => $lastName,
@@ -548,6 +663,13 @@ final class SyntheticIdentityGenerator
         return $this->uniqueIdentifier($persona, 'username', null, $exists, $token);
     }
 
+    public function isPseudonymUsername(array $persona, string $username): bool
+    {
+        return preg_match('/^[a-z0-9][a-z0-9._-]{3,41}$/', $username) === 1
+            && ! $this->pseudonymRevealsPersonaName($username, $persona)
+            && $this->containsKnownPseudonymBase($username);
+    }
+
     public function email(array $persona, string $domain, callable $exists, string $token): string
     {
         return $this->uniqueIdentifier($persona, 'email', strtolower($domain), $exists, $token);
@@ -565,7 +687,9 @@ final class SyntheticIdentityGenerator
         callable $exists,
         string $token
     ): string {
-        for ($attempt = 0; $attempt < 24; $attempt++) {
+        $maxAttempts = $target === 'username' ? 64 : 24;
+
+        for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
             $localPart = $this->identifierCandidate($persona, $target, $domain, $attempt);
             $candidate = $target === 'email' ? "{$localPart}@{$domain}" : $localPart;
 
@@ -574,21 +698,45 @@ final class SyntheticIdentityGenerator
             }
         }
 
+        if ($target === 'username') {
+            return $this->uniquePseudonymFallback($persona, $exists, $token);
+        }
+
         $seed = preg_replace('/[^a-z0-9]/', '', strtolower($token)) ?: Str::lower(Str::random(8));
-        $base = $this->identifierCandidate($persona, $target, $domain, 24);
+        $base = $this->identifierCandidate($persona, $target, $domain, $maxAttempts);
         $localPart = $this->cleanIdentifier($base.substr($seed, 0, 6), $target, $domain);
 
-        return $target === 'email' ? "{$localPart}@{$domain}" : $localPart;
+        return "{$localPart}@{$domain}";
+    }
+
+    private function uniquePseudonymFallback(array $persona, callable $exists, string $token): string
+    {
+        $seed = (int) sprintf('%u', crc32($token));
+
+        for ($attempt = 0; $attempt < 32; $attempt++) {
+            $base = $this->pseudonymCandidate($persona, 64 + $attempt);
+            $suffix = $this->pseudonymFallbackNumber($persona, $seed, $attempt);
+            $candidate = $this->cleanIdentifier($base.$suffix, 'username', null);
+
+            if (! $exists($candidate)) {
+                return $candidate;
+            }
+        }
+
+        throw new \RuntimeException('Es konnte kein eindeutiges Pseudonym erzeugt werden.');
     }
 
     private function identifierCandidate(array $persona, string $target, ?string $domain, int $attempt): string
     {
+        if ($target === 'username') {
+            return $this->pseudonymCandidate($persona, $attempt);
+        }
+
         $rawFirstName = trim((string) ($persona['first_name'] ?? ''));
         $primaryFirstName = preg_split('/\s+/u', $rawFirstName, 2)[0] ?? $rawFirstName;
         $first = $this->identifierComponent($primaryFirstName);
         $fullFirst = $this->identifierComponent($rawFirstName);
         $last = $this->identifierComponent((string) ($persona['last_name'] ?? ''));
-        $city = $this->identifierComponent((string) ($persona['city'] ?? ''));
         $alias = $this->identifierComponent((string) ($persona['username_alias'] ?? ''));
 
         if ($alias === '') {
@@ -599,7 +747,7 @@ final class SyntheticIdentityGenerator
         $lastInitial = substr($last, 0, 1);
         $birthYear = (string) ($persona['birth_year'] ?? random_int(1960, 1999));
         $birthShort = substr($birthYear, -2);
-        $pattern = $this->weightedKey($target === 'email' ? self::EMAIL_PATTERNS : self::USERNAME_PATTERNS);
+        $pattern = $this->weightedKey(self::EMAIL_PATTERNS);
 
         $candidate = match ($pattern) {
             'first_dot_last' => "{$first}.{$last}",
@@ -612,16 +760,10 @@ final class SyntheticIdentityGenerator
             'first_dot_last_birth_short' => "{$first}.{$last}{$birthShort}",
             'first_birth_short' => "{$first}{$birthShort}",
             'last_birth_short' => "{$last}{$birthShort}",
-            'first_city' => "{$first}.".substr($city, 0, min(8, strlen($city))),
-            'initials_birth_short' => "{$firstInitial}{$lastInitial}{$birthShort}",
-            'first_number' => $first.random_int(10, 999),
             'last_initial' => "{$last}.{$firstInitial}",
-            'initials' => "{$firstInitial}{$lastInitial}",
             'last_first_initial' => "{$last}{$firstInitial}",
             'first_last_number' => "{$first}.{$last}".random_int(2, 99),
             'alias_word' => $alias,
-            'alias_word_number' => $alias.random_int(2, 99),
-            'first_alias' => "{$first}.{$alias}",
             'first_dot_last_full_year' => "{$first}.{$last}{$birthYear}",
             'initials_number' => "{$firstInitial}{$lastInitial}".random_int(10, 999),
             'first_only_number' => $first.random_int(2, 999),
@@ -634,6 +776,223 @@ final class SyntheticIdentityGenerator
         }
 
         return $this->cleanIdentifier($candidate, $target, $domain);
+    }
+
+    private function pseudonymCandidate(array $persona, int $attempt): string
+    {
+        for ($candidateAttempt = 0; $candidateAttempt < 32; $candidateAttempt++) {
+            $alias = (string) ($persona['username_alias'] ?? '');
+
+            if ($alias === '' || $candidateAttempt > 0) {
+                $alias = $this->randomValue(self::USERNAME_ALIASES);
+            }
+
+            $modifier = $this->randomValue(self::USERNAME_PSEUDONYM_MODIFIERS);
+            $subject = $this->randomValue(self::USERNAME_PSEUDONYM_SUBJECTS);
+            $separator = $this->pseudonymSeparator();
+            $pattern = $this->weightedKey(self::USERNAME_PSEUDONYM_PATTERNS);
+
+            $candidate = match ($pattern) {
+                'curated_alias' => $alias,
+                'modifier_subject' => $modifier.$separator.$subject,
+                'subject_modifier' => $subject.($separator !== '' ? $separator : '.').$modifier,
+                default => $alias,
+            };
+            $context = $this->pseudonymContext($persona);
+
+            if ($attempt >= 8 && $context === '') {
+                $context = (string) $this->pseudonymNumber($persona);
+            }
+
+            if ($context !== '') {
+                $candidate .= $this->pseudonymSeparator().$context;
+            }
+
+            $candidate = $this->cleanIdentifier($candidate, 'username', null);
+
+            if ($this->isPseudonymUsername($persona, $candidate)) {
+                return $candidate;
+            }
+        }
+
+        foreach (self::USERNAME_ALIASES as $alias) {
+            $candidate = $this->cleanIdentifier($alias.$this->pseudonymNumber($persona), 'username', null);
+
+            if ($this->isPseudonymUsername($persona, $candidate)) {
+                return $candidate;
+            }
+        }
+
+        throw new \RuntimeException('Es konnte kein Pseudonym ohne Namensbestandteile erzeugt werden.');
+    }
+
+    private function pseudonymSeparator(): string
+    {
+        return match ($this->weightedKey(self::USERNAME_SEPARATOR_WEIGHTS)) {
+            'dot' => '.',
+            'underscore' => '_',
+            'dash' => '-',
+            default => '',
+        };
+    }
+
+    private function pseudonymContext(array $persona): string
+    {
+        $initials = $this->personaInitials($persona);
+        $birthShort = $this->personaBirthShort($persona);
+        $locationCode = $this->usernameLocationCode($persona);
+        $innerSeparator = random_int(1, 100) <= 20 ? '.' : '';
+
+        return match ($this->weightedKey(self::USERNAME_CONTEXT_PATTERN_WEIGHTS)) {
+            'random_number' => (string) $this->pseudonymNumber($persona),
+            'birth_short' => $birthShort,
+            'initials' => $initials,
+            'location_code' => $locationCode,
+            'initials_birth' => $this->joinPseudonymContext([$initials, $birthShort], $innerSeparator),
+            'location_birth' => $this->joinPseudonymContext([$locationCode, $birthShort], $innerSeparator),
+            'initials_location' => $this->joinPseudonymContext([$initials, $locationCode], $innerSeparator),
+            default => '',
+        };
+    }
+
+    private function personaInitials(array $persona): string
+    {
+        $initials = '';
+
+        foreach (['first_name', 'last_name'] as $field) {
+            $parts = preg_split('/[\s-]+/u', trim((string) ($persona[$field] ?? ''))) ?: [];
+
+            foreach ($parts as $part) {
+                $part = $this->identifierComponent($part);
+
+                if ($part !== '') {
+                    $initials .= substr($part, 0, 1);
+                }
+            }
+        }
+
+        return substr($initials, 0, 3);
+    }
+
+    private function personaBirthShort(array $persona): string
+    {
+        $birthYear = (int) ($persona['birth_year'] ?? 0);
+
+        return $birthYear > 0 ? substr((string) $birthYear, -2) : '';
+    }
+
+    private function usernameLocationCode(array $persona): string
+    {
+        $city = trim((string) ($persona['city'] ?? ''));
+        $codes = self::USERNAME_LOCATION_CODES[$city] ?? [];
+
+        if ($codes !== []) {
+            return $this->randomValue($codes);
+        }
+
+        $city = $this->identifierComponent($city);
+
+        return $city !== '' ? substr($city, 0, min(3, strlen($city))) : '';
+    }
+
+    private function joinPseudonymContext(array $parts, string $separator): string
+    {
+        return implode($separator, array_values(array_filter($parts, fn (string $part): bool => $part !== '')));
+    }
+
+    private function pseudonymNumber(array $persona): int
+    {
+        $blockedNumbers = $this->personaBlockedNumbers($persona);
+
+        do {
+            $number = random_int(2, 999);
+        } while (in_array($number, $blockedNumbers, true));
+
+        return $number;
+    }
+
+    private function pseudonymFallbackNumber(array $persona, int $seed, int $attempt): int
+    {
+        $blockedNumbers = $this->personaBlockedNumbers($persona);
+        $number = 1000 + (($seed + ($attempt * 7919)) % 9000);
+
+        while (in_array($number, $blockedNumbers, true)) {
+            $number = 1000 + (($number - 1000 + 137) % 9000);
+        }
+
+        return $number;
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function personaBlockedNumbers(array $persona): array
+    {
+        $birthYear = (int) ($persona['birth_year'] ?? 0);
+
+        return array_values(array_filter([
+            $birthYear,
+            $birthYear > 0 ? $birthYear % 100 : null,
+            (int) ($persona['customer_since_year'] ?? 0),
+        ]));
+    }
+
+    private function containsKnownPseudonymBase(string $candidate): bool
+    {
+        $candidate = $this->identifierComponent($candidate);
+        $knownBases = array_merge(
+            self::USERNAME_ALIASES,
+            self::USERNAME_PSEUDONYM_MODIFIERS,
+            self::USERNAME_PSEUDONYM_SUBJECTS
+        );
+
+        foreach ($knownBases as $knownBase) {
+            if (str_contains($candidate, $this->identifierComponent($knownBase))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function pseudonymRevealsPersonaName(string $candidate, array $persona): bool
+    {
+        $candidate = $this->identifierComponent($candidate);
+
+        foreach ($this->personaNameComponents($persona) as $nameComponent) {
+            if (str_contains($candidate, $nameComponent)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function personaNameComponents(array $persona): array
+    {
+        $components = [];
+
+        foreach (['first_name', 'last_name'] as $field) {
+            $rawName = trim((string) ($persona[$field] ?? ''));
+            $fullName = $this->identifierComponent($rawName);
+
+            if (strlen($fullName) >= 3) {
+                $components[] = $fullName;
+            }
+
+            foreach (preg_split('/[\s-]+/u', $rawName) ?: [] as $part) {
+                $part = $this->identifierComponent($part);
+
+                if (strlen($part) >= 3) {
+                    $components[] = $part;
+                }
+            }
+        }
+
+        return array_values(array_unique($components));
     }
 
     private function cleanIdentifier(string $value, string $target, ?string $domain): string

@@ -25,3 +25,19 @@ Append-only communication log. Source and runtime evidence override stale entrie
 ## 2026-08-26T12:53:27Z | Codex -> all | handoff
 
 - Message: Completed: Doubled all 48 first-name and surname pools without per-pool duplicates. Totals are now 1644 age-specific first-name entries and 436 surname entries. Added runtime merging for expanded mixed-family surname inventory and a regression test enforcing exact doubling and uniqueness. Verification: php artisan test passed 17 tests with 9378 assertions; focused identity suite passed 6 tests with 9331 assertions; Pint, PHP lint, samples, and git diff check passed.
+
+## 2026-08-29T06:11:51Z | Codex -> all | status
+
+- Message: Started: Benutzernamen ausschliesslich als nicht personenbezogene Pseudonyme erzeugen
+
+## 2026-08-29T06:19:02Z | Codex -> all | handoff
+
+- Message: Completed: Username generation now uses only non-personal pseudonyms. Removed all first/last name, initial, city, birth-year, and customer-year username patterns; added curated alias and semantic modifier/subject composition, name/year leak validation, collision-safe fallback, and legacy planning-profile revalidation. Existing materialized users remain unchanged. Verification: php artisan test passed 20 tests with 11938 assertions; focused identity suite passed 9 tests with 11897 assertions; Pint, PHP lint, git diff check, source scan, and runtime samples passed.
+
+## 2026-08-29T06:21:29Z | Codex -> all | status
+
+- Message: Started: Pseudonym-Benutzernamen optional um Initialen, Geburtsjahr und Ortscodes erweitern
+
+## 2026-08-29T06:25:45Z | Codex -> all | handoff
+
+- Message: Completed: Pseudonym usernames now keep a mandatory alias core and optionally append initials, two-digit birth year, or verified city codes/telephone area codes. Added mappings for all 84 supported cities, context combinations, version 5 metadata, validator updates, and coverage tests. Existing materialized users remain unchanged. Verification: php artisan test passed 22 tests with 13884 assertions; focused identity suite passed 11 tests with 13833 assertions; Pint, PHP lint, source scan, runtime Hamburg/Berlin samples, and git diff check passed.

@@ -134,7 +134,7 @@ class SyntheticRatingUser extends Model
             $profileName = (string) ($persona['display_name'] ?? $profile['name'] ?? 'Anonyme Testperson');
             $username = (string) ($profile['username'] ?? '');
 
-            if ($username === '') {
+            if ($username === '' || ! $identityGenerator->isPseudonymUsername($persona, $username)) {
                 $username = $identityGenerator->username(
                     $persona,
                     fn (string $candidate): bool => self::withTrashed()->where('username', $candidate)->exists(),
