@@ -7,3 +7,4 @@
 | Vor- und Nachnamen-Pools aller Namensgruppen etwa verdoppeln | Codex | completed | 2026-08-26 |
 | Benutzernamen ausschliesslich als nicht personenbezogene Pseudonyme erzeugen | Codex | completed | 2026-08-29 |
 | Pseudonym-Benutzernamen optional um Initialen, Geburtsjahr und Ortscodes erweitern | Codex | completed | 2026-08-29 |
+| Ausgewaehlte bevorstehende Bewertungsplanungen vollstaendig und anzahlgleich ersetzen | Codex | completed | 2026-09-04 |

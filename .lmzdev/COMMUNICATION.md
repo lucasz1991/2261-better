@@ -41,3 +41,11 @@ Append-only communication log. Source and runtime evidence override stale entrie
 ## 2026-08-29T06:25:45Z | Codex -> all | handoff
 
 - Message: Completed: Pseudonym usernames now keep a mandatory alias core and optionally append initials, two-digit birth year, or verified city codes/telephone area codes. Added mappings for all 84 supported cities, context combinations, version 5 metadata, validator updates, and coverage tests. Existing materialized users remain unchanged. Verification: php artisan test passed 22 tests with 13884 assertions; focused identity suite passed 11 tests with 13833 assertions; Pint, PHP lint, source scan, runtime Hamburg/Berlin samples, and git diff check passed.
+
+## 2026-09-04T05:44:35Z | Codex -> all | status
+
+- Message: Started: Auswaehlbare bevorstehende Bewertungsplanungen verwerfen und vollstaendig neu planen
+
+## 2026-09-04T07:08:06Z | Codex -> all | handoff
+
+- Message: Completed: geplante synthetische Bewertungen koennen einzeln oder global ausgewaehlt und anzahlgleich pro Kalendertag mit neuen Personen, neuen Uhrzeiten und neuem Planungskontext ersetzt werden. Nur zukuenftige, ungestartete und unausgefuehrte Datensaetze sind zugelassen. Eigene synthetische Base-Verknuepfungen werden in einer Base-Transaktion entfernt; fremde oder nicht sicher zuordenbare Base-Daten brechen die Aktion ab. Neue Base-Daten entstehen beim regulaeren Ausfuehrungslauf. Geaendert: ClaimRating, PlanSyntheticClaimRatings, PlannedClaimRatings, Blade-UI, BaseClaimRatingPublisher, neuer ReplanSyntheticClaimRatings-Service sowie Regressionstests. Verifiziert: 27 Tests mit 13948 Assertions, Pint, PHP-Syntax, Blade-/Livewire-Render und Vite-Build. Globales view:cache bleibt durch die bereits fehlende Komponente admin-layout blockiert. Die lokale Base-DB enthaelt nur migrations, daher kein destruktiver Live-Test; isolierte Base-Tests sind gruen. Keine Build-Artefakte behalten.

@@ -108,17 +108,49 @@ class BaseClaimRatingPublisher
     {
         $rating->refresh();
 
+        $baseUserId = (int) ($rating->base_user_id ?: ($rating->syntheticUser?->base_user_id ?? 0));
+
+        if (! $rating->base_claim_rating_id && $baseUserId <= 0) {
+            $this->resetLocalExecution($rating);
+
+            return;
+        }
+
+        $connection = RegCheckDatabase::connectionName();
+
+        DB::connection($connection)->transaction(function () use ($connection, $rating): void {
+            $this->retractOnConnection($rating, $connection);
+        });
+    }
+
+    /**
+     * Removes a synthetic Base link using an already configured connection.
+     * The caller may wrap multiple removals in one Base transaction.
+     */
+    public function retractOnConnection(
+        ClaimRating $rating,
+        string $connection,
+        bool $requireOwnedBaseLinks = false
+    ): void {
+        $rating->refresh();
+
         if (! $rating->base_claim_rating_id) {
             $baseUserId = (int) ($rating->base_user_id ?: ($rating->syntheticUser?->base_user_id ?? 0));
 
             if ($baseUserId > 0) {
-                $connection = RegCheckDatabase::connectionName();
-                DB::connection($connection)->transaction(function () use ($connection, $rating, $baseUserId): void {
-                    $this->deleteSyntheticBaseUserIfUnused($connection, $baseUserId);
-                    $this->resetLocalExecution($rating);
-                });
+                if ($requireOwnedBaseLinks
+                    && Schema::connection($connection)->hasTable('users')) {
+                    $baseUser = DB::connection($connection)
+                        ->table('users')
+                        ->where('id', $baseUserId)
+                        ->first();
 
-                return;
+                    if ($baseUser && ! $this->isOwnSyntheticBaseUser($baseUser)) {
+                        throw new \RuntimeException('Base-Benutzer wurde nicht geloescht, weil er nicht als eigener synthetischer 2261-better Testnutzer erkannt wurde.');
+                    }
+                }
+
+                $this->deleteSyntheticBaseUserIfUnused($connection, $baseUserId);
             }
 
             $this->resetLocalExecution($rating);
@@ -126,30 +158,26 @@ class BaseClaimRatingPublisher
             return;
         }
 
-        $connection = RegCheckDatabase::connectionName();
         $baseId = (int) $rating->base_claim_rating_id;
+        $baseRating = DB::connection($connection)
+            ->table('claim_ratings')
+            ->where('id', $baseId)
+            ->first();
+        $baseUserId = (int) ($rating->base_user_id ?: ($rating->syntheticUser?->base_user_id ?? ($baseRating->user_id ?? 0)));
 
-        DB::connection($connection)->transaction(function () use ($connection, $rating, $baseId): void {
-            $baseRating = DB::connection($connection)
+        if ($baseRating && ! $this->isOwnSyntheticBaseRating($baseRating, $rating)) {
+            throw new \RuntimeException('Base-Bewertung wurde nicht geloescht, weil sie nicht als eigener synthetischer Datensatz markiert ist.');
+        }
+
+        if ($baseRating) {
+            DB::connection($connection)
                 ->table('claim_ratings')
                 ->where('id', $baseId)
-                ->first();
-            $baseUserId = (int) ($rating->base_user_id ?: ($rating->syntheticUser?->base_user_id ?? ($baseRating->user_id ?? 0)));
+                ->delete();
+        }
 
-            if ($baseRating && ! $this->isOwnSyntheticBaseRating($baseRating, $rating)) {
-                throw new \RuntimeException('Base-Bewertung wurde nicht geloescht, weil sie nicht als eigener synthetischer Datensatz markiert ist.');
-            }
-
-            if ($baseRating) {
-                DB::connection($connection)
-                    ->table('claim_ratings')
-                    ->where('id', $baseId)
-                    ->delete();
-            }
-
-            $this->deleteSyntheticBaseUserIfUnused($connection, $baseUserId);
-            $this->resetLocalExecution($rating);
-        });
+        $this->deleteSyntheticBaseUserIfUnused($connection, $baseUserId);
+        $this->resetLocalExecution($rating);
     }
 
     /**
@@ -296,7 +324,7 @@ class BaseClaimRatingPublisher
     }
 
     /**
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
     private function filterPayloadForTable(string $connection, array $payload, string $table = 'claim_ratings'): array

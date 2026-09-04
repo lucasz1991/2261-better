@@ -37,3 +37,12 @@ Record durable decisions with date, context, decision, and consequences.
 - Weighted context variants include initials, two-digit birth year, location code, arbitrary non-personal numbers, and combinations of these values.
 - All 84 supported cities map to a common vehicle-style abbreviation and a real telephone area code, including `hh/040` for Hamburg and `b/030` for Berlin.
 - Full first names and surnames remain forbidden, while the validator now accepts allowed context suffixes.
+
+## 2026-09-04 | Exact replacement of future synthetic rating plans
+
+- Replanning is restricted to future synthetic ratings that have neither started nor executed; `scheduled`, prepared `rated`, and retryable `failed` records are eligible even when they already carry a Base link.
+- Each selected eligible record is replaced exactly once on the same calendar day with a fresh synthetic user, a different visible minute, and a fully rerolled provider/type/subtype/score context.
+- Replacement planning uses an exact-count mode that excludes existing and discarded schedule minutes and filters provider-first weighting to providers with at least one active weighted type/subtype pair.
+- All replacement records are created and validated before old local records are soft-deleted, so planning failures roll back the local transaction without losing the existing plan.
+- Existing Base rating/user records are deleted only when ownership metadata proves that they belong to the local synthetic `2261-better` record. Foreign or ambiguous links abort the operation.
+- Base removals for one replacement batch share one Base transaction. New Base users and ratings are not created immediately; the normal execution/publish flow creates them when each replacement reaches its new scheduled time.

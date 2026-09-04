@@ -25,13 +25,18 @@ class PlanSyntheticClaimRatings implements ShouldQueue
     use SerializesModels;
 
     public int $tries = 1;
+
     public int $timeout = 120;
+
+    /** @var array<string, bool> */
+    private array $reservedScheduleMinutes = [];
 
     public function __construct(
         public ?string $date = null,
         public ?int $targetCount = null,
-    ) {
-    }
+        public bool $createExactCount = false,
+        public array $excludedScheduledFor = [],
+    ) {}
 
     /**
      * @return array<string, mixed>
@@ -46,12 +51,14 @@ class PlanSyntheticClaimRatings implements ShouldQueue
             'form_filling' => $formFillingSettings,
             'target_date' => null,
             'target_count' => 0,
+            'count_mode' => $this->createExactCount ? 'exact' : 'daily_target',
             'already_planned' => 0,
             'retracted_count' => 0,
             'remaining' => 0,
             'created_count' => 0,
             'skipped_count' => 0,
             'eligible_providers' => 0,
+            'plannable_providers' => 0,
             'eligible_pairs' => 0,
             'weight_fallback' => false,
             'created' => [],
@@ -70,6 +77,7 @@ class PlanSyntheticClaimRatings implements ShouldQueue
         $targetCount = max(0, $this->targetCount ?? (int) ($settings['daily_target'] ?? 0));
         $report['target_date'] = $targetDate->toDateString();
         $report['target_count'] = $targetCount;
+        $this->initializeReservedScheduleMinutes();
 
         if ($targetCount <= 0) {
             $report['reason'] = 'daily_target ist 0 oder kleiner.';
@@ -93,7 +101,9 @@ class PlanSyntheticClaimRatings implements ShouldQueue
             ->withoutManualOnlyAfterRetract()
             ->count();
 
-        $remaining = max(0, $targetCount - $alreadyPlanned);
+        $remaining = $this->createExactCount
+            ? $targetCount
+            : max(0, $targetCount - $alreadyPlanned);
         $report['already_planned'] = $alreadyPlanned;
         $report['remaining'] = $remaining;
 
@@ -118,8 +128,37 @@ class PlanSyntheticClaimRatings implements ShouldQueue
             return $report;
         }
 
+        $providerPairsById = [];
+        $planningProviders = $eligibleProviders;
+
+        if ($this->createExactCount) {
+            $planningProviders = [];
+
+            foreach ($eligibleProviders as $provider) {
+                $providerId = (int) ($provider['id'] ?? 0);
+                $providerPairs = $providerId > 0
+                    ? $this->eligiblePairs($connection, $settings, $providerId)
+                    : ['pairs' => [], 'weight_fallback' => false];
+
+                if ($providerPairs['pairs'] === []) {
+                    continue;
+                }
+
+                $providerPairsById[$providerId] = $providerPairs;
+                $planningProviders[] = $provider;
+            }
+
+            if ($planningProviders === []) {
+                $report['reason'] = 'Kein positiv gewichteter Anbieter besitzt eine aktive Typ-/Untertyp-Kombination.';
+
+                return $report;
+            }
+        }
+
+        $report['plannable_providers'] = count($planningProviders);
+
         for ($i = 0; $i < $remaining; $i++) {
-            $provider = $this->weightedRandomProvider($eligibleProviders);
+            $provider = $this->weightedRandomProvider($planningProviders);
             $providerId = (int) ($provider['id'] ?? 0);
             $providerWeight = (float) ($provider['weight'] ?? 0);
 
@@ -133,10 +172,12 @@ class PlanSyntheticClaimRatings implements ShouldQueue
                     'provider_candidate_pairs' => 0,
                     'reason' => 'Keine positive Anbietergewichtung verfuegbar.',
                 ];
+
                 continue;
             }
 
-            $providerPairs = $this->eligiblePairs($connection, $settings, $providerId);
+            $providerPairs = $providerPairsById[$providerId]
+                ?? $this->eligiblePairs($connection, $settings, $providerId);
             $providerCandidatePairCount = count($providerPairs['pairs']);
 
             if ($providerPairs['pairs'] === []) {
@@ -153,6 +194,7 @@ class PlanSyntheticClaimRatings implements ShouldQueue
                     'provider_candidate_pairs' => 0,
                     'reason' => 'Ausgewaehlter Anbieter hat keine aktive Typ-/Untertyp-Kombination.',
                 ];
+
                 continue;
             }
 
@@ -172,6 +214,7 @@ class PlanSyntheticClaimRatings implements ShouldQueue
                     'subtype_id' => $subtypeId,
                     'reason' => 'Keine positive Typ-/Untertyp-Gewichtung verfuegbar.',
                 ];
+
                 continue;
             }
 
@@ -196,6 +239,7 @@ class PlanSyntheticClaimRatings implements ShouldQueue
                     'subtype_id' => $subtypeId,
                     'reason' => $exception->getMessage(),
                 ];
+
                 continue;
             }
 
@@ -258,10 +302,19 @@ class PlanSyntheticClaimRatings implements ShouldQueue
 
         $report['created_count'] = count($report['created']);
         $report['skipped_count'] = count($report['skipped']);
-        $report['ok'] = $report['created_count'] > 0 || $report['skipped_count'] === 0;
-        $report['reason'] = $report['created_count'] > 0
-            ? 'Planung abgeschlossen.'
-            : 'Keine Bewertung konnte geplant werden.';
+        if ($this->createExactCount && $report['created_count'] !== $remaining) {
+            $report['ok'] = false;
+            $report['reason'] = sprintf(
+                'Exakte Planung unvollstaendig: %d von %d Bewertungen erstellt.',
+                $report['created_count'],
+                $remaining
+            );
+        } else {
+            $report['ok'] = $report['created_count'] > 0 || $report['skipped_count'] === 0;
+            $report['reason'] = $report['created_count'] > 0
+                ? 'Planung abgeschlossen.'
+                : 'Keine Bewertung konnte geplant werden.';
+        }
 
         return $report;
     }
@@ -368,7 +421,7 @@ class PlanSyntheticClaimRatings implements ShouldQueue
     }
 
     /**
-     * @param array<int, array<string, mixed>> $pairs
+     * @param  array<int, array<string, mixed>>  $pairs
      * @return array<string, mixed>
      */
     private function weightedRandomPair(array $pairs): array
@@ -394,7 +447,7 @@ class PlanSyntheticClaimRatings implements ShouldQueue
     }
 
     /**
-     * @param array<int, array{id: int, name: string, weight: float}> $providers
+     * @param  array<int, array{id: int, name: string, weight: float}>  $providers
      * @return array{id?: int, name?: string, weight?: float}
      */
     private function weightedRandomProvider(array $providers): array
@@ -420,7 +473,7 @@ class PlanSyntheticClaimRatings implements ShouldQueue
     }
 
     /**
-     * @param array<int|string, mixed> $weights
+     * @param  array<int|string, mixed>  $weights
      */
     private function weightFrom(array $weights, int $id): float
     {
@@ -461,7 +514,7 @@ class PlanSyntheticClaimRatings implements ShouldQueue
     }
 
     /**
-     * @param array<int|string, mixed> $weights
+     * @param  array<int|string, mixed>  $weights
      */
     private function weightedRandom(array $weights): ?int
     {
@@ -494,7 +547,7 @@ class PlanSyntheticClaimRatings implements ShouldQueue
     }
 
     /**
-     * @param array<int|string, mixed> $weights
+     * @param  array<int|string, mixed>  $weights
      */
     private function providerWeightFrom(array $weights, int $id): float
     {
@@ -502,22 +555,77 @@ class PlanSyntheticClaimRatings implements ShouldQueue
     }
 
     /**
-     * @param array<int|string, mixed> $hourWeights
+     * @param  array<int|string, mixed>  $hourWeights
      */
     private function scheduledTime(CarbonImmutable $targetDate, array $hourWeights): CarbonImmutable
     {
-        $hour = $this->weightedRandom($hourWeights) ?? random_int(8, 20);
-        $scheduledFor = $targetDate->setTime($hour, random_int(0, 59), random_int(0, 59));
+        for ($attempt = 0; $attempt < 100; $attempt++) {
+            $hour = $this->weightedRandom($hourWeights) ?? random_int(8, 20);
+            $scheduledFor = $targetDate->setTime($hour, random_int(0, 59), random_int(0, 59));
 
-        if ($scheduledFor->lessThan(now()->addMinutes(5))) {
-            return CarbonImmutable::instance(now()->addMinutes(random_int(5, 90)));
+            if ($scheduledFor->lessThan(now()->addMinutes(5))) {
+                $scheduledFor = CarbonImmutable::instance(now()->addMinutes(random_int(5, 90)));
+            }
+
+            if ($this->createExactCount && ! $scheduledFor->isSameDay($targetDate)) {
+                continue;
+            }
+
+            $minute = $scheduledFor->format('Y-m-d H:i');
+
+            if (isset($this->reservedScheduleMinutes[$minute])) {
+                continue;
+            }
+
+            $this->reservedScheduleMinutes[$minute] = true;
+
+            return $scheduledFor;
         }
 
-        return $scheduledFor;
+        $minimum = CarbonImmutable::instance(now()->addMinutes(5));
+        $scheduledFor = $targetDate->setTime(8, 0);
+
+        if ($scheduledFor->lessThan($minimum)) {
+            $scheduledFor = $minimum->setSecond(0);
+
+            if ($scheduledFor->lessThan($minimum)) {
+                $scheduledFor = $scheduledFor->addMinute();
+            }
+        }
+
+        $lastMinute = $targetDate->endOfDay()->setSecond(0);
+
+        while ($scheduledFor->lessThanOrEqualTo($lastMinute)) {
+            $minute = $scheduledFor->format('Y-m-d H:i');
+
+            if (! isset($this->reservedScheduleMinutes[$minute])) {
+                $this->reservedScheduleMinutes[$minute] = true;
+
+                return $scheduledFor->setSecond(random_int(0, 59));
+            }
+
+            $scheduledFor = $scheduledFor->addMinute();
+        }
+
+        throw new \RuntimeException('Fuer den Zieltag ist keine neue freie Uhrzeit mehr verfuegbar.');
+    }
+
+    private function initializeReservedScheduleMinutes(): void
+    {
+        $this->reservedScheduleMinutes = [];
+
+        foreach ($this->excludedScheduledFor as $scheduledFor) {
+            try {
+                $minute = CarbonImmutable::parse((string) $scheduledFor)->format('Y-m-d H:i');
+                $this->reservedScheduleMinutes[$minute] = true;
+            } catch (\Throwable) {
+                continue;
+            }
+        }
     }
 
     /**
-     * @param array<string, mixed> $scoreWeights
+     * @param  array<string, mixed>  $scoreWeights
      * @return array<string, mixed>
      */
     private function targetScoreProfile(array $scoreWeights): array
@@ -546,7 +654,7 @@ class PlanSyntheticClaimRatings implements ShouldQueue
     }
 
     /**
-     * @param array<string, mixed> $scoreWeights
+     * @param  array<string, mixed>  $scoreWeights
      */
     private function weightedRandomScoreBucket(array $scoreWeights): ?string
     {

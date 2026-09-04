@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -14,14 +15,23 @@ class ClaimRating extends Model
     use SoftDeletes;
 
     public const STATUS_PENDING = 'pending';
+
     public const STATUS_RATED = 'rated';
+
     public const STATUS_APPROVED = 'approved';
+
     public const STATUS_REJECTED = 'rejected';
+
     public const STATUS_PUBLISHED = 'published';
+
     public const STATUS_PENDING_VALIDATION = 'pending_validation';
+
     public const STATUS_SCHEDULED = 'scheduled';
+
     public const STATUS_PROCESSING = 'processing';
+
     public const STATUS_FAILED = 'failed';
+
     public const STATUS_RETRACTED = 'retracted';
 
     protected $fillable = [
@@ -102,10 +112,10 @@ class ClaimRating extends Model
 
         return $query->where(function (Builder $query) use ($search) {
             $query
-                ->where('moderator_comment', 'like', '%' . $search . '%')
-                ->orWhere('last_execution_error', 'like', '%' . $search . '%')
-                ->orWhere('status', 'like', '%' . $search . '%')
-                ->orWhere('data->base_context->insurance->name', 'like', '%' . $search . '%');
+                ->where('moderator_comment', 'like', '%'.$search.'%')
+                ->orWhere('last_execution_error', 'like', '%'.$search.'%')
+                ->orWhere('status', 'like', '%'.$search.'%')
+                ->orWhere('data->base_context->insurance->name', 'like', '%'.$search.'%');
 
             if (is_numeric($search)) {
                 $query
@@ -120,8 +130,8 @@ class ClaimRating extends Model
 
             $query->orWhereHas('syntheticUser', function (Builder $query) use ($search): void {
                 $query
-                    ->where('name', 'like', '%' . $search . '%')
-                    ->orWhere('email', 'like', '%' . $search . '%');
+                    ->where('name', 'like', '%'.$search.'%')
+                    ->orWhere('email', 'like', '%'.$search.'%');
             });
         });
     }
@@ -151,6 +161,22 @@ class ClaimRating extends Model
             });
     }
 
+    public function scopeReplannable(Builder $query, ?DateTimeInterface $at = null): Builder
+    {
+        return $query
+            ->where('data->synthetic', true)
+            ->whereNotNull('scheduled_for')
+            ->where('scheduled_for', '>', $at ?? now())
+            ->whereNull('execution_started_at')
+            ->whereNull('executed_at')
+            ->whereIn('status', [
+                self::STATUS_SCHEDULED,
+                self::STATUS_RATED,
+                self::STATUS_FAILED,
+            ])
+            ->withoutManualOnlyAfterRetract();
+    }
+
     public function isManualOnlyAfterRetract(): bool
     {
         return (bool) data_get($this->data ?? [], 'execution_control.manual_only_after_retract', false);
@@ -167,6 +193,21 @@ class ClaimRating extends Model
             && ! $this->base_claim_rating_id
             && ! $this->base_user_id
             && $this->status !== self::STATUS_PROCESSING;
+    }
+
+    public function isReplannableAt(?DateTimeInterface $at = null): bool
+    {
+        if (! (bool) data_get($this->data ?? [], 'synthetic', false)
+            || ! $this->scheduled_for
+            || ! $this->scheduled_for->gt($at ?? now())
+            || $this->execution_started_at
+            || $this->executed_at
+            || $this->isRetracted()
+            || ! in_array($this->status, [self::STATUS_SCHEDULED, self::STATUS_RATED, self::STATUS_FAILED], true)) {
+            return false;
+        }
+
+        return true;
     }
 
     public function getExecutionStateLabelAttribute(): string

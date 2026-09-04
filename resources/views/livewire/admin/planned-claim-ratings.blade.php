@@ -2,6 +2,12 @@
     @php
         $nextScheduledFor = $stats['next_scheduled_for'] ?? null;
         $nextScheduledLabel = $nextScheduledFor ? $nextScheduledFor->format('d.m.Y H:i') : 'Kein Lauf geplant';
+        $selectedRatingLookup = collect($selectedRatingIds)
+            ->filter(fn ($id) => is_int($id) || (is_string($id) && ctype_digit($id)))
+            ->mapWithKeys(fn ($id) => [(string) $id => true])
+            ->all();
+        $selectedRatingCount = count($selectedRatingLookup);
+        $replannableCount = (int) ($stats['replannable'] ?? 0);
     @endphp
 
     @php
@@ -234,10 +240,76 @@
             </div>
         </div>
 
+        <div class="border-b border-slate-200 bg-blue-50/60 px-3 py-3 sm:px-4">
+            <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
+                            <i class="fal fa-shuffle"></i>
+                        </span>
+                        <div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <h3 class="text-sm font-semibold text-slate-950">Bevorstehende Planung ersetzen</h3>
+                                <span class="inline-flex items-center rounded-full border border-blue-200 bg-white px-2.5 py-0.5 text-xs font-semibold text-blue-700">
+                                    {{ $selectedRatingCount }} ausgewaehlt
+                                </span>
+                            </div>
+                            <p class="mt-0.5 text-xs leading-5 text-slate-600">
+                                Nur zukuenftige, noch nicht gestartete Eintraege sind waehlbar. Eigene Base-Verknuepfungen werden entfernt und beim neuen Lauf neu erstellt; Anzahl und Kalendertag bleiben erhalten.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2 xl:justify-end">
+                    <button
+                        type="button"
+                        wire:click="selectAllUpcoming"
+                        wire:loading.attr="disabled"
+                        wire:target="selectAllUpcoming,replanSelected"
+                        @disabled($replannableCount === 0)
+                        class="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        <i class="fal fa-check-double"></i>
+                        Alle {{ $replannableCount }} anstehenden auswaehlen
+                    </button>
+
+                    <button
+                        type="button"
+                        wire:click="clearRatingSelection"
+                        @disabled($selectedRatingCount === 0)
+                        class="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        <i class="fal fa-xmark"></i>
+                        Auswahl leeren
+                    </button>
+
+                    <button
+                        type="button"
+                        wire:click="replanSelected"
+                        wire:confirm="{{ $selectedRatingCount }} ausgewaehlte bevorstehende Bewertung(en) wirklich verwerfen und vollstaendig neu planen? Vorhandene synthetische Base-Verknuepfungen werden geloescht und beim Ersatz neu erstellt. Bereits ausgefuehrte oder inzwischen gestartete Eintraege bleiben unveraendert."
+                        wire:loading.attr="disabled"
+                        wire:target="replanSelected"
+                        @disabled($selectedRatingCount === 0)
+                        class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        <i class="fal fa-shuffle" wire:loading.remove wire:target="replanSelected"></i>
+                        <i class="fal fa-spinner fa-spin" wire:loading wire:target="replanSelected"></i>
+                        <span wire:loading.remove wire:target="replanSelected">Auswahl neu planen</span>
+                        <span wire:loading wire:target="replanSelected">Plant neu...</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <div class="overflow-x-auto">
-            <table class="w-full min-w-[1120px] divide-y divide-slate-200 text-sm">
+            <table class="w-full min-w-[1180px] divide-y divide-slate-200 text-sm">
                 <thead class="bg-white text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                     <tr>
+                        <th class="w-14 px-4 py-3 text-center">
+                            <span class="sr-only">Neuplanung auswaehlen</span>
+                            <i class="fal fa-square-check" aria-hidden="true"></i>
+                        </th>
                         <th class="px-4 py-3">
                             <button type="button" wire:click="sortBy('id')" class="inline-flex items-center gap-1 font-semibold hover:text-slate-900">
                                 Lauf <i class="fal fa-sort text-[10px]"></i>
@@ -308,6 +380,8 @@
                             $baseUserId = $syntheticUser?->base_user_id ?: $rating->base_user_id;
                             $userLabel = $syntheticUser?->display_name ?: data_get($rating->user_data, 'display_name');
                             $canDelete = $rating->canBeDeletedFromPlan() && ! $baseUserId;
+                            $canReplan = $rating->isReplannableAt(now());
+                            $isSelectedForReplan = isset($selectedRatingLookup[(string) $rating->id]);
                         @endphp
 
                         <tr
@@ -318,8 +392,30 @@
                             tabindex="0"
                             role="button"
                             aria-label="Bewertung #{{ $rating->id }} anzeigen"
-                            class="group cursor-pointer transition hover:bg-slate-50 focus:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
+                            @class([
+                                'group cursor-pointer transition hover:bg-slate-50 focus:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500',
+                                'bg-blue-50/70' => $isSelectedForReplan,
+                            ])
                         >
+                            <td class="w-14 px-4 py-4 text-center align-top">
+                                @if($canReplan)
+                                    <input
+                                        type="checkbox"
+                                        value="{{ $rating->id }}"
+                                        wire:model.live="selectedRatingIds"
+                                        x-on:click.stop
+                                        x-on:keydown.stop
+                                        aria-label="Bewertung #{{ $rating->id }} fuer Neuplanung auswaehlen"
+                                        class="h-4 w-4 rounded border-slate-300 text-blue-700 focus:ring-blue-500"
+                                    >
+                                @else
+                                    <span class="inline-flex h-6 w-6 items-center justify-center text-slate-300" title="Nicht neu planbar">
+                                        <i class="fal fa-lock text-xs" aria-hidden="true"></i>
+                                        <span class="sr-only">Nicht neu planbar</span>
+                                    </span>
+                                @endif
+                            </td>
+
                             <td class="whitespace-nowrap px-4 py-4 align-top">
                                 <div class="flex items-center gap-3">
                                     <span class="inline-flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-xs font-semibold text-slate-800">
@@ -517,7 +613,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="7" class="px-4 py-14 text-center">
+                            <td colspan="8" class="px-4 py-14 text-center">
                                 <div class="mx-auto flex max-w-sm flex-col items-center gap-2 text-sm text-slate-500">
                                     <span class="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
                                         <i class="fal fa-calendar-xmark"></i>

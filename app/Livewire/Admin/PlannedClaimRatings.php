@@ -7,25 +7,34 @@ use App\Livewire\Admin\Concerns\ShowsClaimRatingModal;
 use App\Models\ClaimRating;
 use App\Models\Setting;
 use App\Services\BaseClaimRatingPublisher;
+use App\Services\ReplanSyntheticClaimRatings;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Livewire\Component;
 use Livewire\WithPagination;
 
 class PlannedClaimRatings extends Component
 {
-    use WithPagination;
     use ShowsClaimRatingModal;
+    use WithPagination;
 
     private const AI_VARIATION_SETTING_TYPE = 'claim_rating_ai';
+
     private const AI_VARIATION_SETTING_KEY = 'variation_settings';
 
     public string $search = '';
+
     public string $executionFilter = 'all';
+
     public string $sortField = 'scheduled_for';
+
     public string $sortDirection = 'asc';
+
     public array $aiVariationSettings = [];
+
+    public array $selectedRatingIds = [];
 
     protected array $queryString = [
         'search' => ['except' => ''],
@@ -34,6 +43,7 @@ class PlannedClaimRatings extends Component
 
     public function mount(): void
     {
+        Gate::authorize('ratings.view');
         $this->aiVariationSettings = $this->storedAiVariationSettings();
     }
 
@@ -65,6 +75,80 @@ class PlannedClaimRatings extends Component
     {
         $this->reset(['search', 'executionFilter']);
         $this->resetPage();
+    }
+
+    public function selectAllUpcoming(): void
+    {
+        Gate::authorize('ratings.view');
+
+        $this->selectedRatingIds = ClaimRating::query()
+            ->replannable(now())
+            ->orderBy('scheduled_for')
+            ->pluck('id')
+            ->map(fn (mixed $id): string => (string) $id)
+            ->all();
+
+        if ($this->selectedRatingIds === []) {
+            session()->flash('error', 'Aktuell gibt es keine bevorstehenden Bewertungen, die neu geplant werden koennen.');
+        }
+    }
+
+    public function clearRatingSelection(): void
+    {
+        $this->selectedRatingIds = [];
+    }
+
+    public function replanSelected(ReplanSyntheticClaimRatings $replanner): void
+    {
+        Gate::authorize('ratings.view');
+
+        if ($this->selectedRatingIds === []) {
+            session()->flash('error', 'Bitte mindestens eine bevorstehende Bewertung auswaehlen.');
+
+            return;
+        }
+
+        try {
+            $report = $replanner->replace($this->selectedRatingIds);
+            $replacedIds = array_map('intval', $report['replaced_ids'] ?? []);
+
+            if (! ($report['ok'] ?? false)) {
+                $this->selectedRatingIds = [];
+                session()->flash('error', (string) ($report['reason'] ?? 'Die Auswahl konnte nicht neu geplant werden.'));
+
+                return;
+            }
+
+            if ($this->selectedRatingId && in_array($this->selectedRatingId, $replacedIds, true)) {
+                $this->closeRatingModal();
+            }
+
+            $this->selectedRatingIds = [];
+            $this->resetPage();
+
+            $message = sprintf(
+                '%d bevorstehende Bewertungen wurden inklusive vorhandener Base-Verknuepfungen verworfen und mit neuen Zeiten, Personen und Planungskontexten ersetzt.',
+                (int) ($report['created_count'] ?? 0)
+            );
+            $skippedCount = (int) ($report['skipped_count'] ?? 0);
+
+            if ($skippedCount > 0) {
+                $message .= " {$skippedCount} inzwischen nicht mehr neu planbare Auswahl(en) wurden unveraendert uebersprungen.";
+            }
+
+            session()->flash('success', $message);
+        } catch (\Throwable $exception) {
+            Log::error('Selected synthetic rating replanning failed.', [
+                'claim_rating_ids' => array_values($this->selectedRatingIds),
+                'message' => $exception->getMessage(),
+                'exception' => $exception,
+            ]);
+
+            session()->flash(
+                'error',
+                'Neuplanung fehlgeschlagen. Die bisherige Planung wurde nicht veraendert: '.$exception->getMessage()
+            );
+        }
     }
 
     public function prepareWithAi(int $ratingId): void
@@ -146,7 +230,7 @@ class PlannedClaimRatings extends Component
                 $rating->refresh();
             }
 
-            session()->flash('success', 'Bewertung wurde ausgefuehrt und als synthetischer Base-Datensatz #' . $rating->base_claim_rating_id . ' gespeichert.');
+            session()->flash('success', 'Bewertung wurde ausgefuehrt und als synthetischer Base-Datensatz #'.$rating->base_claim_rating_id.' gespeichert.');
         } catch (\Throwable $exception) {
             Log::error('Manual synthetic rating execution failed.', [
                 'claim_rating_id' => $rating->id,
@@ -307,7 +391,7 @@ class PlannedClaimRatings extends Component
     }
 
     /**
-     * @param array<string, mixed> $settings
+     * @param  array<string, mixed>  $settings
      * @return array<string, mixed>
      */
     private function normalizedAiVariationSettings(array $settings): array
@@ -468,6 +552,9 @@ class PlannedClaimRatings extends Component
                         ->where('status', ClaimRating::STATUS_FAILED)
                         ->orWhereNotNull('last_execution_error');
                 })
+                ->count(),
+            'replannable' => ClaimRating::query()
+                ->replannable(now())
                 ->count(),
             'next_scheduled_for' => $nextRating?->scheduled_for,
         ];

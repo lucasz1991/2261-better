@@ -3,6 +3,8 @@
 namespace Tests\Unit;
 
 use App\Jobs\PlanSyntheticClaimRatings;
+use Carbon\Carbon;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -26,9 +28,16 @@ class PlanSyntheticClaimRatingsProviderWeightTest extends TestCase
         $this->createBaseTables();
     }
 
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
+    }
+
     public function test_high_provider_weight_is_selected_far_more_often(): void
     {
-        $job = new PlanSyntheticClaimRatings();
+        $job = new PlanSyntheticClaimRatings;
         $providers = [
             ['id' => 1, 'name' => 'High Provider', 'weight' => 100.0],
             ['id' => 2, 'name' => 'Low Provider', 'weight' => 1.0],
@@ -47,7 +56,7 @@ class PlanSyntheticClaimRatingsProviderWeightTest extends TestCase
 
     public function test_provider_with_zero_weight_is_not_selected(): void
     {
-        $job = new PlanSyntheticClaimRatings();
+        $job = new PlanSyntheticClaimRatings;
         $providers = [
             ['id' => 1, 'name' => 'Zero Provider', 'weight' => 0.0],
             ['id' => 2, 'name' => 'Active Provider', 'weight' => 1.0],
@@ -63,7 +72,7 @@ class PlanSyntheticClaimRatingsProviderWeightTest extends TestCase
     public function test_type_subtype_pairs_are_filtered_to_selected_provider(): void
     {
         $this->seedProviderFixture();
-        $job = new PlanSyntheticClaimRatings();
+        $job = new PlanSyntheticClaimRatings;
 
         $result = $this->invokePrivate($job, 'eligiblePairs', [
             $this->connection,
@@ -86,7 +95,7 @@ class PlanSyntheticClaimRatingsProviderWeightTest extends TestCase
     public function test_active_provider_without_valid_pair_returns_no_pairs(): void
     {
         $this->seedProviderFixture();
-        $job = new PlanSyntheticClaimRatings();
+        $job = new PlanSyntheticClaimRatings;
 
         $providers = $this->invokePrivate($job, 'eligibleProviders', [
             $this->connection,
@@ -107,6 +116,43 @@ class PlanSyntheticClaimRatingsProviderWeightTest extends TestCase
 
         $this->assertContains(3, array_column($providers, 'id'));
         $this->assertSame([], $pairs['pairs']);
+    }
+
+    public function test_exact_planning_avoids_old_and_duplicate_visible_minutes(): void
+    {
+        Carbon::setTestNow('2026-09-04 10:00:00');
+        $excludedTimes = [];
+
+        for ($minute = 0; $minute < 60; $minute++) {
+            $excludedTimes[] = sprintf('2026-09-06 10:%02d:30', $minute);
+        }
+
+        $job = new PlanSyntheticClaimRatings(
+            date: '2026-09-06',
+            targetCount: 2,
+            createExactCount: true,
+            excludedScheduledFor: $excludedTimes,
+        );
+        $this->invokePrivate($job, 'initializeReservedScheduleMinutes', []);
+
+        $first = $this->invokePrivate($job, 'scheduledTime', [
+            CarbonImmutable::parse('2026-09-06'),
+            [10 => 100],
+        ]);
+        $second = $this->invokePrivate($job, 'scheduledTime', [
+            CarbonImmutable::parse('2026-09-06'),
+            [10 => 100],
+        ]);
+
+        $this->assertSame('2026-09-06', $first->toDateString());
+        $this->assertSame('2026-09-06', $second->toDateString());
+        $excludedMinutes = array_map(
+            fn (string $time): string => CarbonImmutable::parse($time)->format('Y-m-d H:i'),
+            $excludedTimes
+        );
+        $this->assertNotContains($first->format('Y-m-d H:i'), $excludedMinutes);
+        $this->assertNotContains($second->format('Y-m-d H:i'), $excludedMinutes);
+        $this->assertNotSame($first->format('Y-m-d H:i'), $second->format('Y-m-d H:i'));
     }
 
     private function createBaseTables(): void

@@ -12,16 +12,30 @@
 - Full normalized first/last-name components remain forbidden; contextual suffixes such as `as88`, `hh`, `040`, or `hh88` are allowed only alongside a known pseudonym base.
 - Legacy planning profiles are revalidated before reuse.
 - Internal JSON metadata retains `synthetic=true` and `synthetic_marker=2261-better-testperson`.
+- The planned-ratings administration supports individual selection, global selection of all currently replannable entries, clearing the selection, and confirmed replacement.
+- Only future synthetic ratings without `execution_started_at` or `executed_at` and with status `scheduled`, `rated`, or `failed` are replannable; completed, running, retracted, manual-only, and past entries remain unchanged.
+- Replacement preserves the exact selected count and calendar day while assigning a fresh synthetic person, a different visible minute, and a newly weighted provider/type/subtype/score context.
+- Future entries with Base links are eligible. Their owned synthetic Base rating/user links are removed transactionally and the replacement receives a new Base connection through the normal scheduled execution flow.
+- Base deletion is fail-closed: unknown or non-owned Base records abort the replacement instead of being deleted.
+- All replacement rows are created and validated before old local rows and orphaned local synthetic users are soft-deleted.
 
 ## Verification
 
-- `php artisan test`: 22 tests passed, 13884 assertions.
+- `php -d memory_limit=256M artisan test`: 27 tests passed, 13948 assertions.
 - `php artisan test --filter=SyntheticIdentityGeneratorTest`: 11 tests passed, 13833 assertions.
+- `php -d memory_limit=256M artisan test tests/Unit/ReplanSyntheticClaimRatingsTest.php`: 4 tests passed, 48 assertions.
+- `php -d memory_limit=256M artisan test tests/Unit/PlanSyntheticClaimRatingsProviderWeightTest.php`: 5 tests passed, 38 assertions.
 - `vendor\\bin\\pint app/Support/Rating/SyntheticIdentityGenerator.php app/Models/SyntheticRatingUser.php tests/Unit/SyntheticIdentityGeneratorTest.php`: passed.
-- `php -l` for both changed production PHP files and the identity test: no syntax errors.
+- `vendor\\bin\\pint` for all changed PHP production and test files: passed.
+- `php -l` for all changed PHP production and test files: no syntax errors.
+- Target Blade compilation and direct Livewire component/action rendering: passed.
+- `npm run build`: passed; generated build artifacts were not retained.
 - `git diff --check`: passed.
 
 ## Risks and blockers
 
 - Existing materialized synthetic users are intentionally unchanged; new identities use version 5 and legacy unmaterialized planning profiles receive a fresh pseudonym when necessary.
 - Realistic addresses use analyzed or common public provider domains. Synthetic users must remain excluded from outbound mail flows.
+- The configured local `mysql_analytics` Base database currently contains only the `migrations` table, so no destructive live end-to-end replacement against Base data was run locally. Base behavior is covered by isolated database tests.
+- Global `php artisan view:cache` remains blocked by the pre-existing missing Blade component `[admin-layout]`; the changed view compiles directly.
+- Local and Base changes use separate database transactions because Laravel has no distributed transaction across both connections. Ownership and validation failures occur before the local commit, but an infrastructure-level commit failure cannot be made fully atomic across two databases.
