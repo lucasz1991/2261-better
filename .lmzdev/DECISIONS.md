@@ -46,3 +46,11 @@ Record durable decisions with date, context, decision, and consequences.
 - All replacement records are created and validated before old local records are soft-deleted, so planning failures roll back the local transaction without losing the existing plan.
 - Existing Base rating/user records are deleted only when ownership metadata proves that they belong to the local synthetic `2261-better` record. Foreign or ambiguous links abort the operation.
 - Base removals for one replacement batch share one Base transaction. New Base users and ratings are not created immediately; the normal execution/publish flow creates them when each replacement reaches its new scheduled time.
+
+## 2026-09-06 | Identical account-name fields for synthetic people
+
+- The generated pseudonym username is the canonical account name for synthetic people and is written identically to local `name` and `username`.
+- Real first and last names remain in their dedicated columns and in the persona metadata; `publicProfile.display_name` continues to derive from those name parts.
+- Saving a planned person's details treats the Username input as authoritative and mirrors it into the Benutzername field.
+- Base-user creation independently mirrors the same current username into every available `name` and `username` column, including legacy local records whose two fields still differ.
+- Existing materialized records are not bulk-migrated; this avoids changing already linked or executed test data without an explicit migration request.

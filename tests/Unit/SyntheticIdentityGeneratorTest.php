@@ -335,17 +335,17 @@ class SyntheticIdentityGeneratorTest extends TestCase
         $this->assertStringNotContainsString('fallbacktoken', $username);
     }
 
-    public function test_model_stores_a_real_display_name_but_keeps_internal_synthetic_metadata(): void
+    public function test_model_uses_generated_username_for_both_account_name_fields(): void
     {
         $this->configureModelDatabase();
 
         $syntheticUser = SyntheticRatingUser::createForClaimRating();
         $persona = $syntheticUser->data['persona'];
 
-        $this->assertSame($persona['display_name'], $syntheticUser->name);
+        $this->assertSame($syntheticUser->username, $syntheticUser->name);
         $this->assertSame($persona['first_name'], $syntheticUser->first_name);
         $this->assertSame($persona['last_name'], $syntheticUser->last_name);
-        $this->assertNotSame($syntheticUser->name, $syntheticUser->username);
+        $this->assertSame($persona['display_name'], $syntheticUser->publicProfile()['display_name']);
         $this->assertTrue($syntheticUser->data['synthetic']);
         $this->assertSame('2261-better-testperson', $persona['synthetic_marker']);
         $this->assertSame(5, $persona['identity_version']);
@@ -387,6 +387,7 @@ class SyntheticIdentityGeneratorTest extends TestCase
         $syntheticUser = SyntheticRatingUser::ensureForClaimRating($claimRating);
 
         $this->assertNotSame('anna.schneider88', $syntheticUser->username);
+        $this->assertSame($syntheticUser->username, $syntheticUser->name);
         $this->assertTrue($this->generator->isPseudonymUsername($persona, $syntheticUser->username));
         $this->assertSame($syntheticUser->id, $claimRating->fresh()->synthetic_rating_user_id);
     }

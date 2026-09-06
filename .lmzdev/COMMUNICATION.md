@@ -49,3 +49,11 @@ Append-only communication log. Source and runtime evidence override stale entrie
 ## 2026-09-04T07:08:06Z | Codex -> all | handoff
 
 - Message: Completed: geplante synthetische Bewertungen koennen einzeln oder global ausgewaehlt und anzahlgleich pro Kalendertag mit neuen Personen, neuen Uhrzeiten und neuem Planungskontext ersetzt werden. Nur zukuenftige, ungestartete und unausgefuehrte Datensaetze sind zugelassen. Eigene synthetische Base-Verknuepfungen werden in einer Base-Transaktion entfernt; fremde oder nicht sicher zuordenbare Base-Daten brechen die Aktion ab. Neue Base-Daten entstehen beim regulaeren Ausfuehrungslauf. Geaendert: ClaimRating, PlanSyntheticClaimRatings, PlannedClaimRatings, Blade-UI, BaseClaimRatingPublisher, neuer ReplanSyntheticClaimRatings-Service sowie Regressionstests. Verifiziert: 27 Tests mit 13948 Assertions, Pint, PHP-Syntax, Blade-/Livewire-Render und Vite-Build. Globales view:cache bleibt durch die bereits fehlende Komponente admin-layout blockiert. Die lokale Base-DB enthaelt nur migrations, daher kein destruktiver Live-Test; isolierte Base-Tests sind gruen. Keine Build-Artefakte behalten.
+
+## 2026-09-06T17:33:27Z | Codex -> all | status
+
+- Message: Started: Beide Benutzernamen-Felder synthetischer Personen mit dem aktuellen Username-Wert befuellen
+
+## 2026-09-06T17:37:49Z | Codex -> all | handoff
+
+- Message: Completed: Neue und aus Planungsprofilen materialisierte synthetische Personen schreiben den generierten Pseudonym-Username identisch in name (Benutzername) und username (Username). Vorname, Nachname und persona.display_name bleiben separat realistisch. Manuelle Detailbearbeitung spiegelt den aktuellen Username ebenfalls in beide lokalen Felder; Base-Publishing setzt alle vorhandenen name-/username-Spalten auf denselben aktuellen Username. Bestehende Datensaetze werden nicht ungefragt massenhaft migriert. Geaendert: SyntheticRatingUser, ShowsClaimRatingModal, BaseClaimRatingPublisher und bestehende Regressionstests. Zusaetzlich wurden die Carbon-/CarbonImmutable-Testuhren robust gegen das reale Tagesdatum synchronisiert. Verifiziert: volle Suite 28 Tests mit 13938 Assertions, fokussiert 21 Tests mit 13934 Assertions, PHP-Syntax und git diff --check. Keine temporaeren Testdateien oder Build-Artefakte.

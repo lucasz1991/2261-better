@@ -18,13 +18,14 @@
 - Future entries with Base links are eligible. Their owned synthetic Base rating/user links are removed transactionally and the replacement receives a new Base connection through the normal scheduled execution flow.
 - Base deletion is fail-closed: unknown or non-owned Base records abort the replacement instead of being deleted.
 - All replacement rows are created and validated before old local rows and orphaned local synthetic users are soft-deleted.
+- Newly created or newly materialized synthetic people store the generated pseudonym username identically in both local account fields `name` (UI: Benutzername) and `username` (UI: Username).
+- Realistic first name, last name, and `persona.display_name` remain separate, so rating display data keeps the generated person's identity while account names remain pseudonymous.
+- Manual person edits and new Base-user publication also enforce `name === username` using the current Username value.
 
 ## Verification
 
-- `php -d memory_limit=256M artisan test`: 27 tests passed, 13948 assertions.
-- `php artisan test --filter=SyntheticIdentityGeneratorTest`: 11 tests passed, 13833 assertions.
-- `php -d memory_limit=256M artisan test tests/Unit/ReplanSyntheticClaimRatingsTest.php`: 4 tests passed, 48 assertions.
-- `php -d memory_limit=256M artisan test tests/Unit/PlanSyntheticClaimRatingsProviderWeightTest.php`: 5 tests passed, 38 assertions.
+- `php -d memory_limit=256M artisan test`: 28 tests passed, 13938 assertions.
+- Focused identity, replanning, and provider-planning tests: 21 tests passed, 13934 assertions.
 - `vendor\\bin\\pint app/Support/Rating/SyntheticIdentityGenerator.php app/Models/SyntheticRatingUser.php tests/Unit/SyntheticIdentityGeneratorTest.php`: passed.
 - `vendor\\bin\\pint` for all changed PHP production and test files: passed.
 - `php -l` for all changed PHP production and test files: no syntax errors.
@@ -39,3 +40,4 @@
 - The configured local `mysql_analytics` Base database currently contains only the `migrations` table, so no destructive live end-to-end replacement against Base data was run locally. Base behavior is covered by isolated database tests.
 - Global `php artisan view:cache` remains blocked by the pre-existing missing Blade component `[admin-layout]`; the changed view compiles directly.
 - Local and Base changes use separate database transactions because Laravel has no distributed transaction across both connections. Ownership and validation failures occur before the local commit, but an infrastructure-level commit failure cannot be made fully atomic across two databases.
+- Existing materialized synthetic people are not bulk-updated; the synchronized account-name invariant applies when people are created/materialized or saved through the rating editor and when a Base user is newly published.

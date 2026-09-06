@@ -108,7 +108,7 @@ trait ShowsClaimRatingModal
         $userLastName = trim($this->editUserLastName);
         $userUsername = trim($this->editUserUsername) ?: $userName;
         $userEmail = trim($this->editUserEmail);
-        $displayName = trim($userFirstName.' '.$userLastName) ?: $userName;
+        $displayName = trim($userFirstName.' '.$userLastName) ?: $userUsername;
         $persona = is_array($userData['persona'] ?? null) ? $userData['persona'] : [];
         $persona['first_name'] = $userFirstName ?: null;
         $persona['last_name'] = $userLastName ?: null;
@@ -121,7 +121,7 @@ trait ShowsClaimRatingModal
         ]);
 
         $syntheticUser->forceFill([
-            'name' => $userName,
+            'name' => $userUsername,
             'first_name' => $userFirstName ?: null,
             'last_name' => $userLastName ?: null,
             'username' => $userUsername,

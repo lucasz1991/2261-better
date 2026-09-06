@@ -63,7 +63,7 @@ class SyntheticRatingUser extends Model
 
         $syntheticUser = self::create([
             'base_user_id' => null,
-            'name' => (string) $persona['display_name'],
+            'name' => $username,
             'first_name' => $persona['first_name'] ?? null,
             'last_name' => $persona['last_name'] ?? null,
             'username' => $username,
@@ -131,7 +131,6 @@ class SyntheticRatingUser extends Model
             $persona = is_array($persona)
                 ? $persona
                 : $identityGenerator->persona($privacySettings);
-            $profileName = (string) ($persona['display_name'] ?? $profile['name'] ?? 'Anonyme Testperson');
             $username = (string) ($profile['username'] ?? '');
 
             if ($username === '' || ! $identityGenerator->isPseudonymUsername($persona, $username)) {
@@ -142,15 +141,11 @@ class SyntheticRatingUser extends Model
                 );
             }
 
-            if (str_starts_with($profileName, 'Interner Testnutzer 2261')) {
-                $profileName = $persona['display_name'];
-            }
-
             $syntheticUser = self::withTrashed()->firstOrCreate(
                 ['email' => $email],
                 [
                     'base_user_id' => $claimRating->base_user_id,
-                    'name' => $profileName,
+                    'name' => $username,
                     'first_name' => $persona['first_name'] ?? null,
                     'last_name' => $persona['last_name'] ?? null,
                     'username' => $username,

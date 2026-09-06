@@ -31,6 +31,7 @@ class PlanSyntheticClaimRatingsProviderWeightTest extends TestCase
     protected function tearDown(): void
     {
         Carbon::setTestNow();
+        CarbonImmutable::setTestNow();
 
         parent::tearDown();
     }
@@ -121,6 +122,7 @@ class PlanSyntheticClaimRatingsProviderWeightTest extends TestCase
     public function test_exact_planning_avoids_old_and_duplicate_visible_minutes(): void
     {
         Carbon::setTestNow('2026-09-04 10:00:00');
+        CarbonImmutable::setTestNow('2026-09-04 10:00:00');
         $excludedTimes = [];
 
         for ($minute = 0; $minute < 60; $minute++) {

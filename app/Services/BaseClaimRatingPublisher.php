@@ -342,6 +342,7 @@ class BaseClaimRatingPublisher
 
         $syntheticUser = $this->localSyntheticUser($rating);
         $baseUserId = $syntheticUser->base_user_id ?: $rating->base_user_id;
+        $username = trim((string) ($syntheticUser->username ?: $syntheticUser->name));
 
         if ($baseUserId) {
             $existingUser = DB::connection($connection)
@@ -384,10 +385,10 @@ class BaseClaimRatingPublisher
         }
 
         $payload = [
-            'name' => $syntheticUser->name,
+            'name' => $username,
             'first_name' => $syntheticUser->first_name,
             'last_name' => $syntheticUser->last_name,
-            'username' => $syntheticUser->username ?: $syntheticUser->name,
+            'username' => $username,
             'email' => $syntheticUser->email,
             'email_verified_at' => $syntheticUser->email_verified_at ?? $now,
             'password' => Hash::make(Str::random(40)),

@@ -7,6 +7,7 @@ use App\Models\SyntheticRatingUser;
 use App\Services\BaseClaimRatingPublisher;
 use App\Services\ReplanSyntheticClaimRatings;
 use Carbon\Carbon;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +25,7 @@ class ReplanSyntheticClaimRatingsTest extends TestCase
         parent::setUp();
 
         Carbon::setTestNow('2026-09-04 10:00:00');
+        CarbonImmutable::setTestNow('2026-09-04 10:00:00');
         config()->set("database.connections.{$this->connection}", [
             'driver' => 'sqlite',
             'database' => ':memory:',
@@ -39,6 +41,7 @@ class ReplanSyntheticClaimRatingsTest extends TestCase
     protected function tearDown(): void
     {
         Carbon::setTestNow();
+        CarbonImmutable::setTestNow();
         DB::purge($this->connection);
 
         parent::tearDown();
@@ -248,6 +251,43 @@ class ReplanSyntheticClaimRatingsTest extends TestCase
         $rating->refresh();
         $this->assertSame(777, $rating->base_user_id);
         $this->assertSame(ClaimRating::STATUS_SCHEDULED, $rating->status);
+
+        DB::purge($baseConnection);
+    }
+
+    public function test_base_user_name_and_username_receive_the_same_current_username(): void
+    {
+        $baseConnection = 'base_username_test';
+        config()->set("database.connections.{$baseConnection}", [
+            'driver' => 'sqlite',
+            'database' => ':memory:',
+            'prefix' => '',
+            'foreign_key_constraints' => false,
+        ]);
+        DB::purge($baseConnection);
+        Schema::connection($baseConnection)->create('users', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+            $table->string('username');
+            $table->string('email')->unique();
+            $table->timestamp('email_verified_at')->nullable();
+            $table->string('password');
+            $table->string('role')->nullable();
+            $table->boolean('status')->default(true);
+            $table->json('privacy_settings')->nullable();
+            $table->timestamps();
+        });
+
+        $rating = $this->createRating('2026-09-09 14:20:00');
+        $syntheticUser = $rating->syntheticUser;
+        $publisher = app(BaseClaimRatingPublisher::class);
+        $method = new \ReflectionMethod($publisher, 'ensureSyntheticBaseUser');
+        $baseUserId = $method->invoke($publisher, $baseConnection, $rating, now());
+        $baseUser = DB::connection($baseConnection)->table('users')->find($baseUserId);
+
+        $this->assertNotSame($syntheticUser->name, $syntheticUser->username);
+        $this->assertSame($syntheticUser->username, $baseUser->name);
+        $this->assertSame($syntheticUser->username, $baseUser->username);
 
         DB::purge($baseConnection);
     }
