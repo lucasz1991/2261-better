@@ -14,8 +14,7 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule): void
     {
         $schedule->command('ratings:plan-synthetic')
-            ->everyFiveMinutes()
-            ->between('00:05', '22:00')
+            ->dailyAt('00:05')
             ->withoutOverlapping();
 
         $schedule->command('ratings:run-due-synthetic')

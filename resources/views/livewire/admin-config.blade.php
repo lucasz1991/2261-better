@@ -196,6 +196,9 @@
                                     wire:model.defer="dailyTarget"
                                     class="mt-2 block w-full max-w-xs rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
                                 >
+                                <p class="mt-2 max-w-xl text-xs leading-5 text-slate-500">
+                                    Die Aenderung greift erst beim naechsten automatischen Planungslauf um 00:05 Uhr. Bereits fuer heute geplante Bewertungen werden nicht sofort ergaenzt oder veraendert.
+                                </p>
                             </div>
 
                             <button type="button" wire:click="saveRatingSettings" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500">

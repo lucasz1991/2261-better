@@ -130,7 +130,7 @@ class AdminConfig extends Component
         $this->persistDatabaseSettings();
         $this->persistFormFillSettings();
 
-        session()->flash('success', 'Einstellungen wurden gespeichert.');
+        session()->flash('success', 'Einstellungen wurden gespeichert. Die taegliche Anzahl gilt ab dem naechsten automatischen Planungslauf um 00:05 Uhr. Bereits geplante Bewertungen bleiben unveraendert.');
     }
 
     public function saveFormFillSettings(): void
@@ -146,7 +146,7 @@ class AdminConfig extends Component
         $this->validateRatingSettings();
         $this->persistRatingSettings();
 
-        session()->flash('success', 'Bewertungs-Einstellungen wurden gespeichert.');
+        session()->flash('success', 'Bewertungs-Einstellungen wurden gespeichert. Die taegliche Anzahl gilt ab dem naechsten automatischen Planungslauf um 00:05 Uhr. Bereits geplante Bewertungen bleiben unveraendert.');
     }
 
     public function saveDatabaseSettings(): void
