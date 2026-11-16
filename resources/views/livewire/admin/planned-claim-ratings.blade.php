@@ -207,37 +207,11 @@
                     <p class="mt-0.5 text-xs text-slate-500">Zeile anklicken, um Antworten, Konfiguration und Benutzerdaten zu oeffnen.</p>
                 </div>
 
-                <div class="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_170px]">
-                    <div>
-                        <label for="planned-rating-search" class="sr-only">Suche</label>
-                        <div class="relative">
-                            <span class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
-                                <i class="fal fa-search"></i>
-                            </span>
-                            <input
-                                id="planned-rating-search"
-                                type="search"
-                                wire:model.live.debounce.300ms="search"
-                                placeholder="Suche nach ID, Base, Anbieter, Fehler..."
-                                class="block w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-3 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                            >
-                        </div>
-                    </div>
-
-                    <div>
-                        <label for="execution-filter" class="sr-only">Statusfilter</label>
-                        <select
-                            id="execution-filter"
-                            wire:model.live="executionFilter"
-                            class="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                        >
-                            @foreach($filters as $value => $label)
-                                <option value="{{ $value }}">{{ $label }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                </div>
             </div>
+        </div>
+
+        <div class="p-3 sm:p-4">
+            @include('livewire.admin.partials.claim-rating-filters')
         </div>
 
         <div class="border-b border-slate-200 bg-blue-50/60 px-3 py-3 sm:px-4">
@@ -255,13 +229,17 @@
                                 </span>
                             </div>
                             <p class="mt-0.5 text-xs leading-5 text-slate-600">
-                                Nur zukuenftige, noch nicht gestartete Eintraege sind waehlbar. Eigene Base-Verknuepfungen werden entfernt und beim neuen Lauf neu erstellt; Anzahl und Kalendertag bleiben erhalten.
+                                Die Auswahl berücksichtigt alle aktiven Filter. Ein Filterwechsel leert die Auswahl. Nur zukünftige, noch nicht gestartete Einträge sind wählbar. Eigene Base-Verknuepfungen werden entfernt und beim neuen Lauf neu erstellt; Anzahl und Kalendertag bleiben erhalten.
                             </p>
                         </div>
                     </div>
                 </div>
 
                 <div class="flex flex-wrap items-center gap-2 xl:justify-end">
+                    <button type="button" wire:click="selectCurrentPage" wire:loading.attr="disabled"
+                        class="inline-flex items-center justify-center rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50">
+                        Diese Seite auswählen
+                    </button>
                     <button
                         type="button"
                         wire:click="selectAllUpcoming"
@@ -271,7 +249,7 @@
                         class="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                         <i class="fal fa-check-double"></i>
-                        Alle {{ $replannableCount }} anstehenden auswaehlen
+                        Alle {{ $replannableCount }} neu planbaren Treffer auswählen
                     </button>
 
                     <button
@@ -320,7 +298,7 @@
                                 Termin <i class="fal fa-sort text-[10px]"></i>
                             </button>
                         </th>
-                        <th class="px-4 py-3">Kontext</th>
+                        <th class="px-4 py-3"><div class="flex gap-2"><button type="button" wire:click="sortBy('name')" class="font-semibold">Name</button><span aria-hidden="true">/</span><button type="button" wire:click="sortBy('username')" class="font-semibold">Benutzername</button></div><span class="text-[10px] font-normal">Versicherungskontext</span></th>
                         <th class="px-4 py-3">
                             <button type="button" wire:click="sortBy('rating_score')" class="inline-flex items-center gap-1 font-semibold hover:text-slate-900">
                                 AI / Score <i class="fal fa-sort text-[10px]"></i>
@@ -378,7 +356,9 @@
                             $targetScoreProfile = data_get($rating->data, 'planning.target_score_profile');
                             $syntheticUser = $rating->syntheticUser;
                             $baseUserId = $syntheticUser?->base_user_id ?: $rating->base_user_id;
-                            $userLabel = $syntheticUser?->display_name ?: data_get($rating->user_data, 'display_name');
+                            $profile = data_get($rating->data, 'planning.synthetic_user_profile', []);
+                            $userLabel = $syntheticUser?->name ?: data_get($profile, 'name');
+                            $username = $syntheticUser?->username ?: data_get($profile, 'username');
                             $canDelete = $rating->canBeDeletedFromPlan() && ! $baseUserId;
                             $canReplan = $rating->isReplannableAt(now());
                             $isSelectedForReplan = isset($selectedRatingLookup[(string) $rating->id]);
@@ -442,19 +422,16 @@
                             </td>
 
                             <td class="min-w-[310px] px-4 py-4 align-top">
-                                <div class="font-semibold text-slate-950">{{ $insuranceName }}</div>
+                                <div class="font-semibold text-slate-950">{{ $userLabel ?: 'Kein Benutzer vorbereitet' }}</div>
+                                @if($username)<div class="mt-0.5 text-sm text-blue-700">{{ '@'.$username }}</div>@endif
+                                <div class="mt-2 font-medium text-slate-700">{{ $insuranceName }}</div>
                                 <div class="mt-1 flex flex-wrap gap-1.5">
                                     <span class="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">{{ $typeName }}</span>
                                     <span class="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">{{ $subtypeName }}</span>
                                 </div>
                                 <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                                     <span>Versicherung-ID {{ $rating->insurance_id ?? '-' }}</span>
-                                    @if($userLabel)
-                                        <span class="inline-flex items-center gap-1">
-                                            <i class="fal fa-user"></i>
-                                            {{ $userLabel }}
-                                        </span>
-                                    @endif
+
                                 </div>
                             </td>
 
@@ -498,6 +475,7 @@
                                     </span>
                                 </div>
 
+                                <div class="mt-2">@include('livewire.admin.partials.claim-rating-sync-state')</div>
                                 @if($rating->last_execution_error)
                                     <div class="mt-2 max-w-[260px] rounded-md border border-rose-200 bg-rose-50 px-2.5 py-2 text-xs leading-5 text-rose-700">
                                         {{ $rating->last_execution_error }}

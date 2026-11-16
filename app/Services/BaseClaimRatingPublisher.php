@@ -385,7 +385,9 @@ class BaseClaimRatingPublisher
         }
 
         $payload = [
-            'name' => $username,
+            'name' => data_get($syntheticUser->data, 'manual_edit.edited_at')
+                ? (trim((string) $syntheticUser->name) ?: $username)
+                : $username,
             'first_name' => $syntheticUser->first_name,
             'last_name' => $syntheticUser->last_name,
             'username' => $username,
@@ -403,6 +405,8 @@ class BaseClaimRatingPublisher
             ->table('users')
             ->insertGetId($this->filterPayloadForTable($connection, $payload, 'users'));
 
+        $this->createBaseCustomerProfile($connection, $newBaseUserId, $syntheticUser, $now);
+
         $syntheticUser->markBaseUserCreated((int) $newBaseUserId);
         $rating->forceFill([
             'synthetic_rating_user_id' => $syntheticUser->id,
@@ -410,6 +414,45 @@ class BaseClaimRatingPublisher
         ])->saveQuietly();
 
         return (int) $newBaseUserId;
+    }
+
+    private function createBaseCustomerProfile(string $connection, int $baseUserId, SyntheticRatingUser $user, mixed $now): void
+    {
+        if (! Schema::connection($connection)->hasTable('customers')) {
+            $userColumns = Schema::connection($connection)->getColumnListing('users');
+            foreach ((array) data_get($user->data, 'manual_edit.changed_fields', []) as $field) {
+                if (in_array($field, ['username', 'first_name', 'last_name'], true) && ! in_array($field, $userColumns, true)) {
+                    throw new \RuntimeException('Ein bearbeitetes Benutzerfeld hat im Base-Schema kein unterstütztes Ziel.');
+                }
+            }
+
+            return;
+        }
+        $columns = Schema::connection($connection)->getColumnListing('customers');
+        if (count(array_intersect(['user_id', 'username', 'first_name', 'last_name'], $columns)) !== 4) {
+            throw new \RuntimeException('Das vorhandene Base-Kundenprofil hat kein unterstütztes Namensschema.');
+        }
+        if (DB::connection($connection)->table('customers')->where('user_id', $baseUserId)->exists()) {
+            throw new \RuntimeException('Für den neuen synthetischen Base-Benutzer existiert unerwartet bereits ein Profil.');
+        }
+        $username = trim((string) ($user->username ?: $user->name));
+        if (DB::connection($connection)->table('customers')->whereRaw('LOWER(username) = ?', [strtolower($username)])->exists()) {
+            throw new \RuntimeException('Der Benutzername ist in Base bereits vergeben. Bitte den lokalen Benutzer korrigieren.');
+        }
+        $payload = ['user_id' => $baseUserId, 'username' => $username, 'first_name' => (string) $user->first_name, 'last_name' => (string) $user->last_name];
+        foreach (Schema::connection($connection)->getColumns('customers') as $column) {
+            if (! array_key_exists($column['name'], $payload)
+                && ! in_array($column['name'], ['created_at', 'updated_at'], true)
+                && ! ($column['nullable'] ?? false) && ($column['default'] ?? null) === null && ! ($column['auto_increment'] ?? false)) {
+                throw new \RuntimeException('Das Base-Kundenprofil benötigt zusätzliche Pflichtfelder. Es wurde nicht angelegt.');
+            }
+        }
+        foreach (['created_at', 'updated_at'] as $field) {
+            if (in_array($field, $columns, true)) {
+                $payload[$field] = $now;
+            }
+        }
+        DB::connection($connection)->table('customers')->insert($payload);
     }
 
     private function localSyntheticUser(ClaimRating $rating): SyntheticRatingUser

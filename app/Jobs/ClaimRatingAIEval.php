@@ -4,12 +4,14 @@ namespace App\Jobs;
 
 use App\Http\Controllers\Customer\ClaimRating\AIEvalController;
 use App\Models\ClaimRating;
+use App\Support\Rating\ManualRatingEdits;
 use DateTimeImmutable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class ClaimRatingAIEval implements ShouldQueue
@@ -20,14 +22,14 @@ class ClaimRatingAIEval implements ShouldQueue
     use SerializesModels;
 
     public int $tries = 3;
+
     public int $timeout = 180;
 
     public function __construct(
         public ClaimRating $claimRating,
         public bool $isAdminReanalysis = false,
         public bool $markExecuted = true,
-    ) {
-    }
+    ) {}
 
     public function handle(): void
     {
@@ -85,20 +87,29 @@ class ClaimRatingAIEval implements ShouldQueue
             $this->claimRating->attachments = $attachments;
         }
 
-        $currentState = ClaimRating::query()->find($this->claimRating->id);
+        // Keep the external AI request outside the lock, then merge and save
+        // against one locked current version so an editor cannot be overwritten.
+        $saved = DB::transaction(function (): bool {
+            $currentState = ClaimRating::query()->lockForUpdate()->find($this->claimRating->id);
+            if (! $currentState || $currentState->isRetracted()) {
+                return false;
+            }
 
-        if (! $currentState || $currentState->isRetracted()) {
+            ManualRatingEdits::apply($this->claimRating, $currentState);
+            $this->claimRating->status = ClaimRating::STATUS_RATED;
+            $this->claimRating->is_public = (bool) data_get($currentState->data, 'synthetic', false);
+
+            if ($this->markExecuted && data_get($currentState->data, 'synthetic') === true && ! $currentState->executed_at) {
+                $this->claimRating->executed_at = now();
+            }
+
+            $this->claimRating->saveQuietly();
+
+            return true;
+        }, 3);
+        if (! $saved) {
             return;
         }
-
-        $this->claimRating->status = ClaimRating::STATUS_RATED;
-        $this->claimRating->is_public = (bool) ($data['synthetic'] ?? false);
-
-        if ($this->markExecuted && ($data['synthetic'] ?? false) === true && ! $this->claimRating->executed_at) {
-            $this->claimRating->executed_at = now();
-        }
-
-        $this->claimRating->saveQuietly();
 
         Log::info('AI evaluation completed for local ClaimRating.', [
             'claim_rating_id' => $this->claimRating->id,
@@ -134,7 +145,7 @@ class ClaimRatingAIEval implements ShouldQueue
 
         try {
             $start = new DateTimeImmutable((string) $startedAt);
-            $end = $endedAt ? new DateTimeImmutable((string) $endedAt) : new DateTimeImmutable();
+            $end = $endedAt ? new DateTimeImmutable((string) $endedAt) : new DateTimeImmutable;
 
             return $start->diff($end)->days;
         } catch (\Throwable) {

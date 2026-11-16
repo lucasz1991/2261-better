@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Admin;
 
+use App\Livewire\Admin\Concerns\FiltersClaimRatings;
 use App\Livewire\Admin\Concerns\ShowsClaimRatingModal;
 use App\Models\ClaimRating;
 use Illuminate\Database\Eloquent\Builder;
@@ -11,37 +12,30 @@ use Livewire\WithPagination;
 
 class ClaimRatings extends Component
 {
-    use WithPagination;
+    use FiltersClaimRatings;
     use ShowsClaimRatingModal;
+    use WithPagination;
 
     public string $search = '';
-    public string $status = '';
+
     public string $sortField = 'executed_at';
+
     public string $sortDirection = 'desc';
 
     protected array $queryString = [
-        'search' => ['except' => ''],
-        'status' => ['except' => ''],
+        'sortField' => ['except' => 'executed_at'],
+        'sortDirection' => ['except' => 'desc'],
     ];
 
     public function mount(): void
     {
         Gate::authorize('ratings.view');
-    }
-
-    public function updatedSearch(): void
-    {
-        $this->resetPage();
-    }
-
-    public function updatedStatus(): void
-    {
-        $this->resetPage();
+        $this->initializeRatingSearch();
     }
 
     public function sortBy(string $field): void
     {
-        if (! in_array($field, ['id', 'base_claim_rating_id', 'base_user_id', 'synthetic_rating_user_id', 'rating_score', 'status', 'is_public', 'created_at', 'executed_at'], true)) {
+        if (! in_array($field, ['id', 'base_claim_rating_id', 'base_user_id', 'synthetic_rating_user_id', 'rating_score', 'status', 'is_public', 'created_at', 'executed_at', 'updated_at', 'name', 'username'], true)) {
             return;
         }
 
@@ -55,25 +49,20 @@ class ClaimRatings extends Component
 
     public function clearFilters(): void
     {
-        $this->reset(['search', 'status']);
-        $this->resetPage();
+        $this->resetRatingFilters();
     }
 
     public function render()
     {
-        $ratings = ClaimRating::query()
-            ->with('syntheticUser')
-            ->whereNotNull('executed_at')
-            ->search($this->search)
-            ->when($this->status !== '', fn ($query) => $query->where('status', $this->status))
-            ->orderBy($this->sortField, $this->sortDirection)
-            ->paginate(15);
+        Gate::authorize('ratings.view');
+        $ratings = $this->orderedRatingQuery($this->applyRatingFilters($this->ratingDetailQuery()), 'executed_at')
+            ->paginate($this->ratingPageSize());
 
-        return view('livewire.admin.claim-ratings', [
+        return view('livewire.admin.claim-ratings', array_merge($this->ratingFilterViewData(), [
             'ratings' => $ratings,
             'statusOptions' => ClaimRating::statusOptions(),
             'selectedRating' => $this->selectedRating(),
-        ])->layout('layouts.master');
+        ]))->layout('layouts.master');
     }
 
     protected function ratingDetailQuery(): Builder

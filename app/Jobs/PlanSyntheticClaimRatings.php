@@ -245,7 +245,7 @@ class PlanSyntheticClaimRatings implements ShouldQueue
 
             $scheduledFor = $this->scheduledTime($targetDate, $settings['hour_weights'] ?? []);
             $targetScoreProfile = $this->targetScoreProfile($settings['score_weights'] ?? []);
-            $syntheticUser = $this->createSyntheticUser();
+            $syntheticUser = $this->createSyntheticUser($scheduledFor);
             $syntheticUserProfile = $syntheticUser->publicProfile();
 
             $claimRating = ClaimRating::create([
@@ -648,9 +648,9 @@ class PlanSyntheticClaimRatings implements ShouldQueue
     /**
      * @return array<string, mixed>
      */
-    private function createSyntheticUser(): SyntheticRatingUser
+    private function createSyntheticUser(CarbonImmutable $scheduledFor): SyntheticRatingUser
     {
-        return SyntheticRatingUser::createForClaimRating();
+        return SyntheticRatingUser::createForClaimRating(null, $scheduledFor);
     }
 
     /**

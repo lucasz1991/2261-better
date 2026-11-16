@@ -3,6 +3,7 @@
 use App\Livewire\Admin\ClaimRatings;
 use App\Livewire\Admin\Employees;
 use App\Livewire\Admin\PlannedClaimRatings;
+use App\Livewire\Admin\SyntheticUsers;
 use App\Livewire\AdminConfig;
 use App\Livewire\AdminDashboard;
 use Illuminate\Http\Request;
@@ -36,7 +37,7 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
     Route::get('/dashboard', fn () => redirect()->route('admin.dashboard'))->name('dashboard');
 });
 
-Route::middleware(['auth:sanctum', 'auth.status', config('jetstream.auth_session'), 'verified'])
+Route::middleware(['auth:sanctum', 'auth.status', config('jetstream.auth_session'), 'verified', 'role:admin,staff'])
     ->prefix('administrator')
     ->name('admin.')
     ->group(function () {
@@ -51,5 +52,6 @@ Route::middleware(['auth:sanctum', 'auth.status', config('jetstream.auth_session
         Route::get('/', AdminDashboard::class)->name('dashboard');
         Route::get('/index', AdminDashboard::class)->name('index');
         Route::get('/reviews', ClaimRatings::class)->name('reviews');
+        Route::get('/review-users', SyntheticUsers::class)->name('review-users');
         Route::get('/employees', Employees::class)->name('employees');
-});
+    });

@@ -57,3 +57,51 @@ Append-only communication log. Source and runtime evidence override stale entrie
 ## 2026-09-06T17:37:49Z | Codex -> all | handoff
 
 - Message: Completed: Neue und aus Planungsprofilen materialisierte synthetische Personen schreiben den generierten Pseudonym-Username identisch in name (Benutzername) und username (Username). Vorname, Nachname und persona.display_name bleiben separat realistisch. Manuelle Detailbearbeitung spiegelt den aktuellen Username ebenfalls in beide lokalen Felder; Base-Publishing setzt alle vorhandenen name-/username-Spalten auf denselben aktuellen Username. Bestehende Datensaetze werden nicht ungefragt massenhaft migriert. Geaendert: SyntheticRatingUser, ShowsClaimRatingModal, BaseClaimRatingPublisher und bestehende Regressionstests. Zusaetzlich wurden die Carbon-/CarbonImmutable-Testuhren robust gegen das reale Tagesdatum synchronisiert. Verifiziert: volle Suite 28 Tests mit 13938 Assertions, fokussiert 21 Tests mit 13934 Assertions, PHP-Syntax und git diff --check. Keine temporaeren Testdateien oder Build-Artefakte.
+
+## 2026-11-16T04:15:43Z | Codex -> all | status
+
+- Message: Started: analyze similar usernames and plan 2261 search filters and published rating/customer editing
+
+## 2026-11-16T04:20:58+00:00 | Codex -> all | handoff
+
+- Task: analyze repeated usernames and plan 2261 UI filtering and published-rating/user editing.
+- Status: completed (analysis and plan only).
+- Changed: `.lmzdev/artifacts/reports/2261-optimierungsplan-2026-11-16.md` and coordination notes.
+- Verified: isolated generator sample; `php -d memory_limit=256M vendor/phpunit/phpunit/phpunit --filter SyntheticIdentityGeneratorTest --do-not-cache-result` passed 11 tests / 13,836 assertions; source analysis across 2261 and Base.
+- Risks: live deployment/schema and actual production distribution unverified; current publisher does not update existing Base users; two database connections require recoverable synchronization.
+- Next: begin with read-only inventory/schema mapping, then implement filter and editing services per plan. No application changes or task-created temporary test artifacts.
+
+## 2026-11-16T04:29:23Z | Codex -> all | status
+
+- Message: Started: expand username diversity optimization plan with similarity rules, allocation flow, metrics and rollout
+
+## 2026-11-16T04:35:03+00:00 | Codex -> all | handoff
+
+- Task: expand and explain the username generator optimization plan.
+- Status: completed (documentation only).
+- Changed: report revision 2, section 6.1 through 6.12; schedule/verification notes and coordination files.
+- Verified: current source/plan read; old canonical capacity upper bound 1,034 and 10,000-name repetition lower bound 8,966 checked; independent algorithm/UI review incorporated. No new application tests needed or claimed.
+- Proposed targets remain unverified until implementation and comparative simulation. No code/data changes or task-created temporary test artifacts.
+- Next: G1 inventory and metrics, G2 catalog capacity proof, then bounded selection/allocation prototype.
+
+## 2026-11-16T04:38:38Z | Codex -> all | status
+
+- Message: Started: implement locally approved 2261 optimization plan; generator allocation, search filters, published edits and quality UI
+
+
+## 2026-11-16 | Codex -> all | local implementation handoff
+
+- Scope: approved generator diversity, allocation registry, search/filter UI, user/quality page, independent name/username editing and published-rating updates.
+- Completed locally: 33,692-core catalog; recent/reserved core rules; family/day weighting; bounded fuzzy checks; revisions, retry and conflict recovery; safe first-publication profile mapping.
+- Verified: 35 PHPUnit tests, 23 isolated editor/Base tests (69 assertions), ten 1,000-name runs and one 10,000-name run without repeated core; concurrent 10-process allocation; local browser search/filter/selection/editor/preview; build/lint/format/diff checks.
+- Browser comparison used same 1,000 personas: old 566 cores, new 1,000 cores. Both generated 1,000 names without failure.
+- Important: regular local MySQL port 3306 is not listening. New migrations were exercised only against isolated SQLite. Apply php artisan migrate after the intended local DB is available. No .env or production changes, no live scheduler run.
+- Current documentation: artifacts/reports/2261-umsetzung-2026-11-16.md. Historical planning state remains marked as historical.
+
+## 2026-11-16T05:15:13Z | Codex -> all | status
+
+- Message: Started: verify new generator and complete local activation if local database is available
+
+## 2026-11-16T05:16:21Z | Codex -> all | handoff
+
+- Message: Verified username generator v6: 33692 cores, 457 families, 12 themes; focused tests 15 passed / 13873 assertions. Regular migrate:status fails SQLSTATE 2002 on local MySQL 127.0.0.1:3306; no MySQL process/service. Only STATE/TASKS/COMMUNICATION updated. No application or existing user changes. Next: start intended local MySQL then run php artisan migrate in 2261-better.

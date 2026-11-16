@@ -3,6 +3,7 @@
 namespace App\Livewire\Admin;
 
 use App\Jobs\GenerateSyntheticClaimRating;
+use App\Livewire\Admin\Concerns\FiltersClaimRatings;
 use App\Livewire\Admin\Concerns\ShowsClaimRatingModal;
 use App\Models\ClaimRating;
 use App\Models\Setting;
@@ -17,6 +18,7 @@ use Livewire\WithPagination;
 
 class PlannedClaimRatings extends Component
 {
+    use FiltersClaimRatings;
     use ShowsClaimRatingModal;
     use WithPagination;
 
@@ -37,29 +39,21 @@ class PlannedClaimRatings extends Component
     public array $selectedRatingIds = [];
 
     protected array $queryString = [
-        'search' => ['except' => ''],
+        'sortField' => ['except' => 'scheduled_for'],
+        'sortDirection' => ['except' => 'asc'],
         'executionFilter' => ['except' => 'all'],
     ];
 
     public function mount(): void
     {
         Gate::authorize('ratings.view');
+        $this->initializeRatingSearch();
         $this->aiVariationSettings = $this->storedAiVariationSettings();
-    }
-
-    public function updatedSearch(): void
-    {
-        $this->resetPage();
-    }
-
-    public function updatedExecutionFilter(): void
-    {
-        $this->resetPage();
     }
 
     public function sortBy(string $field): void
     {
-        if (! in_array($field, ['id', 'base_claim_rating_id', 'base_user_id', 'synthetic_rating_user_id', 'scheduled_for', 'executed_at', 'execution_attempts', 'status', 'rating_score', 'created_at'], true)) {
+        if (! in_array($field, ['id', 'base_claim_rating_id', 'base_user_id', 'synthetic_rating_user_id', 'scheduled_for', 'executed_at', 'execution_attempts', 'status', 'rating_score', 'created_at', 'updated_at', 'name', 'username'], true)) {
             return;
         }
 
@@ -73,24 +67,29 @@ class PlannedClaimRatings extends Component
 
     public function clearFilters(): void
     {
-        $this->reset(['search', 'executionFilter']);
-        $this->resetPage();
+        $this->resetRatingFilters();
+        $this->reset('executionFilter');
     }
 
     public function selectAllUpcoming(): void
     {
         Gate::authorize('ratings.view');
-
-        $this->selectedRatingIds = ClaimRating::query()
-            ->replannable(now())
-            ->orderBy('scheduled_for')
-            ->pluck('id')
-            ->map(fn (mixed $id): string => (string) $id)
-            ->all();
+        $this->selectedRatingIds = $this->filteredPlannedQuery()->replannable(now())
+            ->orderBy('id')->pluck('id')->map(fn ($id) => (string) $id)->all();
 
         if ($this->selectedRatingIds === []) {
-            session()->flash('error', 'Aktuell gibt es keine bevorstehenden Bewertungen, die neu geplant werden koennen.');
+            session()->flash('error', 'Unter den aktuellen Filtern sind keine Einträge neu planbar.');
         }
+    }
+
+    public function selectCurrentPage(): void
+    {
+        Gate::authorize('ratings.view');
+        $page = $this->orderedRatingQuery($this->filteredPlannedQuery(), 'scheduled_for')
+            ->paginate($this->ratingPageSize());
+        $this->selectedRatingIds = $page->getCollection()
+            ->filter(fn (ClaimRating $rating) => $rating->isReplannableAt(now()))
+            ->map(fn (ClaimRating $rating) => (string) $rating->id)->values()->all();
     }
 
     public function clearRatingSelection(): void
@@ -100,7 +99,10 @@ class PlannedClaimRatings extends Component
 
     public function replanSelected(ReplanSyntheticClaimRatings $replanner): void
     {
-        Gate::authorize('ratings.view');
+        Gate::authorize('ratings.manage_planning');
+        $requested = array_values(array_unique(array_filter(array_map('intval', $this->selectedRatingIds), fn ($id) => $id > 0)));
+        $this->selectedRatingIds = $this->filteredPlannedQuery()->replannable(now())
+            ->whereKey($requested)->pluck('id')->map(fn ($id) => (string) $id)->all();
 
         if ($this->selectedRatingIds === []) {
             session()->flash('error', 'Bitte mindestens eine bevorstehende Bewertung auswaehlen.');
@@ -153,6 +155,8 @@ class PlannedClaimRatings extends Component
 
     public function prepareWithAi(int $ratingId): void
     {
+        Gate::authorize('ratings.manage_planning');
+
         $rating = ClaimRating::query()
             ->planned()
             ->whereKey($ratingId)
@@ -194,6 +198,8 @@ class PlannedClaimRatings extends Component
 
     public function executeNow(int $ratingId): void
     {
+        Gate::authorize('ratings.manage_planning');
+
         $rating = ClaimRating::query()
             ->planned()
             ->whereKey($ratingId)
@@ -244,6 +250,8 @@ class PlannedClaimRatings extends Component
 
     public function undoExecution(int $ratingId): void
     {
+        Gate::authorize('ratings.manage_planning');
+
         $rating = null;
 
         try {
@@ -273,6 +281,8 @@ class PlannedClaimRatings extends Component
 
     public function deleteRating(int $ratingId): void
     {
+        Gate::authorize('ratings.manage_planning');
+
         $deletedUser = false;
 
         try {
@@ -335,6 +345,8 @@ class PlannedClaimRatings extends Component
 
     public function saveAiVariationSettings(): void
     {
+        Gate::authorize('settings.manage');
+
         $settings = $this->normalizedAiVariationSettings($this->aiVariationSettings);
 
         Setting::setValue(self::AI_VARIATION_SETTING_TYPE, self::AI_VARIATION_SETTING_KEY, $settings);
@@ -346,6 +358,8 @@ class PlannedClaimRatings extends Component
 
     public function resetAiVariationSettings(): void
     {
+        Gate::authorize('settings.manage');
+
         $settings = $this->aiVariationDefaults();
 
         Setting::setValue(self::AI_VARIATION_SETTING_TYPE, self::AI_VARIATION_SETTING_KEY, $settings);
@@ -436,19 +450,17 @@ class PlannedClaimRatings extends Component
 
     public function render()
     {
-        $ratings = $this->plannedQuery()
-            ->search($this->search)
-            ->when($this->executionFilter !== 'all', fn (Builder $query) => $this->applyExecutionFilter($query, $this->executionFilter))
-            ->orderByRaw($this->sortField === 'scheduled_for' ? 'scheduled_for IS NULL, scheduled_for '.$this->sortDirection : $this->sortField.' '.$this->sortDirection)
-            ->paginate(15);
+        Gate::authorize('ratings.view');
+        $ratings = $this->orderedRatingQuery($this->filteredPlannedQuery(), 'scheduled_for')
+            ->paginate($this->ratingPageSize());
 
-        return view('livewire.admin.planned-claim-ratings', [
+        return view('livewire.admin.planned-claim-ratings', array_merge($this->ratingFilterViewData(), [
             'ratings' => $ratings,
             'stats' => $this->stats(),
             'filters' => $this->filters(),
             'selectedRating' => $this->selectedRating(),
             'aiVariationDefaults' => $this->aiVariationDefaults(),
-        ])->layout('layouts.master');
+        ]))->layout('layouts.master');
     }
 
     protected function ratingDetailQuery(): Builder
@@ -461,6 +473,12 @@ class PlannedClaimRatings extends Component
         return ClaimRating::query()
             ->with('syntheticUser')
             ->planned();
+    }
+
+    private function filteredPlannedQuery(): Builder
+    {
+        return $this->applyRatingFilters($this->plannedQuery())
+            ->when($this->executionFilter !== 'all', fn (Builder $query) => $this->applyExecutionFilter($query, $this->executionFilter));
     }
 
     private function applyExecutionFilter(Builder $query, string $filter): Builder
@@ -514,7 +532,7 @@ class PlannedClaimRatings extends Component
      */
     private function stats(): array
     {
-        $planned = $this->plannedQuery();
+        $planned = $this->filteredPlannedQuery();
 
         $nextRating = (clone $planned)
             ->whereNull('executed_at')
@@ -553,7 +571,7 @@ class PlannedClaimRatings extends Component
                         ->orWhereNotNull('last_execution_error');
                 })
                 ->count(),
-            'replannable' => ClaimRating::query()
+            'replannable' => $this->filteredPlannedQuery()
                 ->replannable(now())
                 ->count(),
             'next_scheduled_for' => $nextRating?->scheduled_for,

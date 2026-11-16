@@ -30,6 +30,11 @@ class RbacCatalog
             ],
             'Bewertungen' => [
                 ['key' => 'ratings.view', 'label' => 'Bewertungen anzeigen'],
+                ['key' => 'ratings.edit', 'label' => 'Bewertungen bearbeiten'],
+                ['key' => 'ratings.edit_published', 'label' => 'Veröffentlichte Bewertungen bearbeiten'],
+                ['key' => 'ratings.manage_planning', 'label' => 'Bewertungsplanung verwalten'],
+                ['key' => 'synthetic_users.edit', 'label' => 'Bewertungsbenutzer bearbeiten'],
+                ['key' => 'synthetic_users.quality', 'label' => 'Namensqualität prüfen'],
             ],
         ];
     }

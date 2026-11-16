@@ -442,5 +442,7 @@ class ReplanSyntheticClaimRatingsTest extends TestCase
             $table->timestamps();
             $table->softDeletes();
         });
+
+        (require database_path('migrations/2026_11_16_000001_create_synthetic_username_registry.php'))->up();
     }
 }

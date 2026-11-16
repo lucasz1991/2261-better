@@ -1,5 +1,23 @@
 # Current state
 
+## Activation recheck - 2026-11-16
+
+- Username generator v6 verified in source: 33,692 canonical cores, 457 families, 12 themes. Username metadata version is 6; persona identity_version remains 5.
+- Focused generator tests rerun successfully: 15 tests / 13,873 assertions, using isolated in-memory SQLite for model tests.
+- Regular activation is still blocked: `php artisan migrate:status --no-ansi` fails with SQLSTATE[HY000] [2002], connection refused at local MySQL 127.0.0.1:3306. No MySQL process or service was found.
+- No application code, existing users, environment configuration, or regular database data changed in this recheck. Start the intended local MySQL instance, then run `php artisan migrate` from this project to complete activation.
+
+## Current implementation – 2026-11-16
+
+- User approved local implementation. Generator v6, centralized allocation/registry, rating filters, user/quality page, independent display-name/username editing, published-rating revisions and recoverable Base synchronization are implemented.
+- Current catalog: 33,692 canonical cores, 12 themes, 457 families. Last 1,000 core exclusion plus pending reservations; recent/family/day weighting and bounded near-spelling checks.
+- Ten seeded 1,000-name runs and a final 10,000-name run had no repeated core. Browser comparison: old 566/new 1,000 distinct cores from 1,000 personas.
+- Independent manual display names now supersede the old mandatory name===username editing contract. Automatic creation still starts with matching account fields. No automatic rename of existing people.
+- Local MySQL is unavailable; regular migration remains pending. Isolated SQLite migrations/integration tests and local browser checks passed. No production changes, no .env edits, no real scheduler execution.
+- Details and operational limits: `artifacts/reports/2261-umsetzung-2026-11-16.md`.
+
+## Historical state (superseded where the current section differs)
+
 ## Confirmed
 
 - LMZ Dev workspace initialized.
@@ -41,3 +59,18 @@
 - Global `php artisan view:cache` remains blocked by the pre-existing missing Blade component `[admin-layout]`; the changed view compiles directly.
 - Local and Base changes use separate database transactions because Laravel has no distributed transaction across both connections. Ownership and validation failures occur before the local commit, but an infrastructure-level commit failure cannot be made fully atomic across two databases.
 - Existing materialized synthetic people are not bulk-updated; the synchronized account-name invariant applies when people are created/materialized or saved through the rating editor and when a Base user is newly published.
+
+## 2026-11-16 | 2261 analysis and optimization plan
+
+- Analysis only: repeated username bases explained by 82 curated aliases (40% weight), 28 modifiers and 34 subjects, and exact-only collision checking.
+- Search/filter, independent display-name/username editing, published-rating editing, schema mapping and robust Base synchronization are specified in `artifacts/reports/2261-optimierungsplan-2026-11-16.md`.
+- Existing name===username behavior is a prior deliberate contract; independent manual editing is proposed, not implemented.
+- Existing Base users are not updated by current publisher; public display uses Base users.name. Base username/profile mapping requires live-schema verification.
+- Verification: focused SyntheticIdentityGeneratorTest passed 11 tests / 13,836 assertions; isolated in-memory samples of 300/1,000/5,000 usernames demonstrate repeated bases. No live database audit or UI runtime audit.
+- Application code and data unchanged. No task-created test files or temporary verification artifacts remain.
+
+## 2026-11-16 | Generator plan revision 2
+
+- Expanded section 6 of `artifacts/reports/2261-optimierungsplan-2026-11-16.md` into 12 detailed subsections: exact/core/family similarity, catalog capacity, recent-use rules, candidate selection, allocation/concurrency, metrics, UI and rollout.
+- Proposed starting targets: 15,000 usable canonical bases, last-1,000 allocation core exclusion plus open plan reservations, family weighting over 200 allocations and 30 days, bounded candidate search, repeatable multi-run evaluation. All are plan parameters, not achieved results.
+- Clarified unknown legacy coverage, coordinated namespace limits, search-budget versus catalog exhaustion, and count-preserving planning failure. No application/data changes or new test artifacts.

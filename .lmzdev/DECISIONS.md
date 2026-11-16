@@ -1,5 +1,15 @@
 # Decisions
 
+## 2026-11-16 | Approved local implementation
+
+- Implement the approved generator/search/editor plan locally. No production publication or mass correction of historical names.
+- Replace the previous forced equality of manually edited name/username with independent fields; automatic identity creation may initialize both identically.
+- Canonical diversity excludes decorative suffixes, separators and variant word order; allocate within one locked local namespace and keep historical assignments.
+- Treat related user and rating revisions separately, with a durable local outbox and field-limited, ownership-checked Base synchronization. Cross-database atomicity is not claimed.
+- Add auditable correction/discard paths for Base conflicts so an invalid target cannot permanently block the user.
+- Keep AI calls outside locks; protect the final refresh/merge/save against concurrent manual changes.
+- Use a disposable isolated SQLite installation for runtime checks because regular local MySQL is not running. Activation requires the new migrations on the intended local database.
+
 Record durable decisions with date, context, decision, and consequences.
 
 ## 2026-08-26 | Synthetic identity generation v2
@@ -54,3 +64,15 @@ Record durable decisions with date, context, decision, and consequences.
 - Saving a planned person's details treats the Username input as authoritative and mirrors it into the Benutzername field.
 - Base-user creation independently mirrors the same current username into every available `name` and `username` column, including legacy local records whose two fields still differ.
 - Existing materialized records are not bulk-migrated; this avoids changing already linked or executed test data without an explicit migration request.
+
+## 2026-11-16 | Analysis scope and proposed next implementation
+
+- User requested an analysis and optimization plan, including UI search/filters and editing published ratings and their user names. This turn changes documentation only.
+- Recommended direction, not yet implemented: independently editable display name and username, dedicated updates for existing linked Base records, explicit mapping to actual profile schema, revisioned retryable synchronization, and distribution-aware username generation.
+- No automatic renaming of existing users; any selected correction should use the planned editor and audit/sync flow.
+
+## 2026-11-16 | Detailed username diversity proposal
+
+- Preserve exact identifier integrity separately from canonical-core similarity and soft family diversity. Proposed hard rules apply to automatic generation with explicit legacy and namespace coverage.
+- Recommend a versioned checked catalog, recent-use history and centralized allocation; suffix changes are not counted as fresh bases. Proposal only, not implemented.
+- Revise effort estimation after catalog capacity and real schema inventory; do not retain the earlier estimate for the expanded scope.

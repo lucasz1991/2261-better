@@ -2,10 +2,23 @@
 
 namespace App\Support\Rating;
 
+use Illuminate\Container\Container;
 use Illuminate\Support\Str;
 
 final class SyntheticIdentityGenerator
 {
+    private ?\Closure $randomIntSource = null;
+
+    private ?UsernameFingerprint $usernameFingerprint = null;
+
+    private ?UsernameDiversitySelector $usernameSelector = null;
+
+    /** An optional source makes username comparison runs repeatable. */
+    public function __construct(?callable $randomInt = null)
+    {
+        $this->randomIntSource = $randomInt ? \Closure::fromCallable($randomInt) : null;
+    }
+
     private const AGE_RANGE_WEIGHTS = [
         '25-34' => 24,
         '35-44' => 26,
@@ -614,7 +627,7 @@ final class SyntheticIdentityGenerator
         $region = $this->region();
         $birthYear = $this->birthYearFor($ageRange, $currentYear);
         $earliestCustomerYear = max($currentYear - 35, $birthYear + 18);
-        $customerSinceYear = random_int(min($earliestCustomerYear, $currentYear - 1), $currentYear - 1);
+        $customerSinceYear = $this->randomInt(min($earliestCustomerYear, $currentYear - 1), $currentYear - 1);
         $household = $this->householdProfileFor($ageRange);
         $occupation = $this->occupationFor($ageRange);
         $digitalProfile = $this->digitalProfileFor($ageRange);
@@ -658,16 +671,100 @@ final class SyntheticIdentityGenerator
         ];
     }
 
-    public function username(array $persona, callable $exists, string $token): string
+    public function username(array $persona, callable $exists, string $token, array $history = []): string
+    {
+        return $this->usernameCandidate($persona, $exists, $token, $history)['username'];
+    }
+
+    /** Pure candidate generation. The caller must reserve and revalidate atomically. */
+    public function usernameCandidate(array $persona, callable $exists, string $token, array $history = []): array
+    {
+        return $this->selector()->select(
+            $this->describedHistory($history),
+            fn (string $candidate): bool => preg_match('/^[a-z0-9][a-z0-9._-]{3,41}$/', $candidate) === 1
+                && ! $this->pseudonymRevealsPersonaName($candidate, $persona),
+            function (array $entry) use ($persona): string {
+                $separator = $this->pseudonymSeparator();
+                $username = implode($separator, $entry['tokens'] ?? [$entry['base']]);
+                $context = $this->pseudonymContext($persona);
+                if ($context !== '') {
+                    $username .= $this->pseudonymSeparator().$context;
+                }
+
+                // Reject, rather than truncate, a core/context exceeding the contract.
+                return $username;
+            },
+            $exists,
+            isset($persona['username_generation_day']) ? (string) $persona['username_generation_day'] : null,
+        );
+    }
+
+    public function isUsernameCandidateAllowed(array $candidate, array $history): bool
+    {
+        return $this->selector()->isAllowed($candidate, $this->describedHistory($history));
+    }
+
+    public function describeUsername(string $username): array
+    {
+        return $this->fingerprint()->describe($username);
+    }
+
+    public function catalogStatistics(): array
+    {
+        $statistics = UsernameCatalog::statistics();
+        $statistics['total_bases'] = $statistics['canonical_bases'];
+
+        return $statistics;
+    }
+
+    /** Version-5 comparison only; never used for durable username allocation. */
+    public function legacyUsername(array $persona, callable $exists, string $token): string
     {
         return $this->uniqueIdentifier($persona, 'username', null, $exists, $token);
+    }
+
+    private function fingerprint(): UsernameFingerprint
+    {
+        return $this->usernameFingerprint ??= new UsernameFingerprint(
+            self::USERNAME_ALIASES,
+            self::USERNAME_PSEUDONYM_MODIFIERS,
+            self::USERNAME_PSEUDONYM_SUBJECTS,
+        );
+    }
+
+    private function selector(): UsernameDiversitySelector
+    {
+        $container = Container::getInstance();
+        $options = $container->bound('config') ? (array) $container->make('config')->get('username_generation', []) : [];
+
+        return $this->usernameSelector ??= new UsernameDiversitySelector($options, fn (int $min, int $max): int => $this->randomInt($min, $max));
+    }
+
+    private function describedHistory(array $history): array
+    {
+        foreach ($history as &$row) {
+            if (! is_array($row)) {
+                $row = ['username' => (string) $row];
+            }
+            if (empty($row['core_key']) || empty($row['base'])) {
+                $description = $this->describeUsername((string) ($row['username'] ?? ''));
+                foreach (['core_key', 'base', 'family_keys', 'pattern_key', 'theme', 'confidence'] as $field) {
+                    if (empty($row[$field]) && isset($description[$field])) {
+                        $row[$field] = $description[$field];
+                    }
+                }
+            }
+        }
+        unset($row);
+
+        return $history;
     }
 
     public function isPseudonymUsername(array $persona, string $username): bool
     {
         return preg_match('/^[a-z0-9][a-z0-9._-]{3,41}$/', $username) === 1
             && ! $this->pseudonymRevealsPersonaName($username, $persona)
-            && $this->containsKnownPseudonymBase($username);
+            && ($this->describeUsername($username)['core_key'] !== null || $this->containsKnownPseudonymBase($username));
     }
 
     public function email(array $persona, string $domain, callable $exists, string $token): string
@@ -745,7 +842,7 @@ final class SyntheticIdentityGenerator
 
         $firstInitial = substr($first, 0, 1);
         $lastInitial = substr($last, 0, 1);
-        $birthYear = (string) ($persona['birth_year'] ?? random_int(1960, 1999));
+        $birthYear = (string) ($persona['birth_year'] ?? $this->randomInt(1960, 1999));
         $birthShort = substr($birthYear, -2);
         $pattern = $this->weightedKey(self::EMAIL_PATTERNS);
 
@@ -762,17 +859,17 @@ final class SyntheticIdentityGenerator
             'last_birth_short' => "{$last}{$birthShort}",
             'last_initial' => "{$last}.{$firstInitial}",
             'last_first_initial' => "{$last}{$firstInitial}",
-            'first_last_number' => "{$first}.{$last}".random_int(2, 99),
+            'first_last_number' => "{$first}.{$last}".$this->randomInt(2, 99),
             'alias_word' => $alias,
             'first_dot_last_full_year' => "{$first}.{$last}{$birthYear}",
-            'initials_number' => "{$firstInitial}{$lastInitial}".random_int(10, 999),
-            'first_only_number' => $first.random_int(2, 999),
+            'initials_number' => "{$firstInitial}{$lastInitial}".$this->randomInt(10, 999),
+            'first_only_number' => $first.$this->randomInt(2, 999),
             'full_first_last' => "{$fullFirst}.{$last}",
             default => "{$first}.{$last}",
         };
 
         if ($attempt >= 8) {
-            $candidate .= random_int(10, $attempt >= 16 ? 9999 : 999);
+            $candidate .= $this->randomInt(10, $attempt >= 16 ? 9999 : 999);
         }
 
         return $this->cleanIdentifier($candidate, $target, $domain);
@@ -841,7 +938,7 @@ final class SyntheticIdentityGenerator
         $initials = $this->personaInitials($persona);
         $birthShort = $this->personaBirthShort($persona);
         $locationCode = $this->usernameLocationCode($persona);
-        $innerSeparator = random_int(1, 100) <= 20 ? '.' : '';
+        $innerSeparator = $this->randomInt(1, 100) <= 20 ? '.' : '';
 
         return match ($this->weightedKey(self::USERNAME_CONTEXT_PATTERN_WEIGHTS)) {
             'random_number' => (string) $this->pseudonymNumber($persona),
@@ -905,7 +1002,7 @@ final class SyntheticIdentityGenerator
         $blockedNumbers = $this->personaBlockedNumbers($persona);
 
         do {
-            $number = random_int(2, 999);
+            $number = $this->randomInt(2, 999);
         } while (in_array($number, $blockedNumbers, true));
 
         return $number;
@@ -982,12 +1079,20 @@ final class SyntheticIdentityGenerator
             if (strlen($fullName) >= 3) {
                 $components[] = $fullName;
             }
+            $germanName = $this->identifierComponent(strtr(mb_strtolower($rawName), ['ä' => 'ae', 'ö' => 'oe', 'ü' => 'ue', 'ß' => 'ss']));
+            if (strlen($germanName) >= 3) {
+                $components[] = $germanName;
+            }
 
             foreach (preg_split('/[\s-]+/u', $rawName) ?: [] as $part) {
+                $germanPart = $this->identifierComponent(strtr(mb_strtolower($part), ['ä' => 'ae', 'ö' => 'oe', 'ü' => 'ue', 'ß' => 'ss']));
                 $part = $this->identifierComponent($part);
 
                 if (strlen($part) >= 3) {
                     $components[] = $part;
+                }
+                if (strlen($germanPart) >= 3) {
+                    $components[] = $germanPart;
                 }
             }
         }
@@ -1015,7 +1120,7 @@ final class SyntheticIdentityGenerator
         $limit = $target === 'email' ? 48 : 42;
         $value = substr($value, 0, $limit);
 
-        return trim($value, '.-_') ?: 'user'.random_int(100, 9999);
+        return trim($value, '.-_') ?: 'user'.$this->randomInt(100, 9999);
     }
 
     private function identifierComponent(string $value): string
@@ -1037,7 +1142,7 @@ final class SyntheticIdentityGenerator
             default => [65, 84],
         };
 
-        return random_int($currentYear - $maxAge, $currentYear - $minAge);
+        return $this->randomInt($currentYear - $maxAge, $currentYear - $minAge);
     }
 
     private function firstNameFor(string $ageRange, string $nameSet): string
@@ -1050,7 +1155,7 @@ final class SyntheticIdentityGenerator
             : $this->generalFirstNamesForAge($ageRange);
 
         // In mehrsprachigen Familien sind deutsche Vornamen ebenfalls häufig.
-        if ($nameSet !== 'general' && random_int(1, 100) <= 16) {
+        if ($nameSet !== 'general' && $this->randomInt(1, 100) <= 16) {
             $names = $this->generalFirstNamesForAge($ageRange);
         }
 
@@ -1073,14 +1178,14 @@ final class SyntheticIdentityGenerator
         $lastNames = $this->lastNamesFor($nameSet);
 
         // Gemischte Familiennamen verhindern zu starre Vorname-Nachname-Schablonen.
-        if (random_int(1, 100) <= 14) {
+        if ($this->randomInt(1, 100) <= 14) {
             $lastNames = $this->allLastNames();
         }
 
         $lastName = $this->randomValue($lastNames);
 
-        if (random_int(1, 100) <= 7) {
-            $secondPool = random_int(1, 100) <= 55 ? $this->generalLastNames() : $lastNames;
+        if ($this->randomInt(1, 100) <= 7) {
+            $secondPool = $this->randomInt(1, 100) <= 55 ? $this->generalLastNames() : $lastNames;
 
             do {
                 $secondName = $this->randomValue($secondPool);
@@ -1214,7 +1319,7 @@ final class SyntheticIdentityGenerator
         if ($householdType === 'Wohngemeinschaft') {
             return [
                 'household_type' => $householdType,
-                'household_size' => random_int(2, 5),
+                'household_size' => $this->randomInt(2, 5),
                 'children_count' => 0,
                 'marital_status' => 'ledig',
             ];
@@ -1225,7 +1330,7 @@ final class SyntheticIdentityGenerator
 
             return [
                 'household_type' => $householdType,
-                'household_size' => max(3, $children + random_int(2, 3)),
+                'household_size' => max(3, $children + $this->randomInt(2, 3)),
                 'children_count' => $children,
                 'marital_status' => $this->weightedKey(['verheiratet' => 62, 'feste Partnerschaft' => 12, 'ledig' => 14, 'verwitwet' => 12]),
             ];
@@ -1348,7 +1453,7 @@ final class SyntheticIdentityGenerator
      */
     private function randomValue(array $values): mixed
     {
-        return $values[array_rand($values)];
+        return $values[$this->randomInt(0, count($values) - 1)];
     }
 
     /**
@@ -1356,7 +1461,7 @@ final class SyntheticIdentityGenerator
      */
     private function weightedKey(array $weights): string
     {
-        $target = random_int(1, array_sum($weights));
+        $target = $this->randomInt(1, array_sum($weights));
         $cursor = 0;
 
         foreach ($weights as $key => $weight) {
@@ -1368,5 +1473,10 @@ final class SyntheticIdentityGenerator
         }
 
         return (string) array_key_last($weights);
+    }
+
+    private function randomInt(int $min, int $max): int
+    {
+        return $this->randomIntSource ? ($this->randomIntSource)($min, $max) : random_int($min, $max);
     }
 }

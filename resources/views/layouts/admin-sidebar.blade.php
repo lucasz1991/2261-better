@@ -40,6 +40,13 @@
                 >
                     Bewertungen
                 </x-menu.sidebar-nav-link>
+                <x-menu.sidebar-nav-link
+                    :href="route('admin.review-users')"
+                    icon="users"
+                    :active="request()->routeIs('admin.review-users')"
+                >
+                    Benutzer &amp; Namensqualität
+                </x-menu.sidebar-nav-link>
             @endcan
 
             <x-menu.sidebar-nav-link

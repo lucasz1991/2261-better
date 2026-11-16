@@ -154,16 +154,22 @@ class SyntheticIdentityGeneratorTest extends TestCase
         $structures = ['dot' => 0, 'dash_or_underscore' => 0, 'compact' => 0, 'number' => 0];
         $aliasUsernames = 0;
         $aliasEmails = 0;
+        $history = [];
+        $cores = [];
 
         for ($i = 0; $i < 300; $i++) {
             $persona = $this->generator->persona([
                 'ratings' => ['name_visibility' => 'all'],
             ]);
-            $username = $this->generator->username(
+            $candidate = $this->generator->usernameCandidate(
                 $persona,
                 fn (string $candidate): bool => isset($usernames[$candidate]),
-                Str::random(12)
+                Str::random(12),
+                $history,
             );
+            $username = $candidate['username'];
+            $history[] = $candidate;
+            $cores[$candidate['core_key']] = true;
             $email = $this->generator->email(
                 $persona,
                 $domains[$i % count($domains)],
@@ -194,8 +200,71 @@ class SyntheticIdentityGeneratorTest extends TestCase
         $this->assertCount(300, $usernames);
         $this->assertCount(300, $emails);
         $this->assertCount(4, array_filter($structures));
-        $this->assertGreaterThanOrEqual(12, $aliasUsernames);
+        // A persona's old fixed alias is no longer privileged over fresh cores.
+        $this->assertCount(300, $cores);
+        $this->assertGreaterThanOrEqual(15000, $this->generator->catalogStatistics()['total_bases']);
         $this->assertGreaterThanOrEqual(2, $aliasEmails);
+    }
+
+    public function test_core_history_blocks_suffix_variants_and_active_old_reservations(): void
+    {
+        $persona = ['first_name' => 'Xaver', 'last_name' => 'Quendler', 'birth_year' => 1977, 'city' => 'Hamburg'];
+        $candidate = $this->generator->usernameCandidate($persona, fn (): bool => false, 'core-history');
+        $renamed = array_replace($candidate, ['username' => $candidate['base'].'_99']);
+
+        $this->assertFalse($this->generator->isUsernameCandidateAllowed($renamed, [$candidate]));
+        $history = array_fill(0, 1000, ['username' => 'unbekannt', 'core_key' => 'fixture:other', 'base' => 'xyzxyzxyz', 'family_keys' => []]);
+        array_unshift($history, array_replace($candidate, ['is_reserved' => true]));
+        $this->assertFalse($this->generator->isUsernameCandidateAllowed($renamed, $history));
+
+        $forward = $this->generator->describeUsername('ruhiger.fuchs');
+        $reverse = $this->generator->describeUsername('fuchs_ruhiger');
+        $this->assertNotNull($forward['core_key']);
+        $this->assertSame($forward['core_key'], $reverse['core_key']);
+        $this->assertSame('unknown', $this->generator->describeUsername('zxqv9837')['confidence']);
+    }
+
+    public function test_similar_spelling_is_rejected_without_banning_unrelated_bases(): void
+    {
+        $history = [['username' => 'waldpfad82', 'core_key' => 'legacy:waldpfad', 'base' => 'waldpfad', 'family_keys' => ['wald']]];
+        $this->assertFalse($this->generator->isUsernameCandidateAllowed(['core_key' => 'other:waldpfadd', 'base' => 'waldpfadd'], $history));
+        $this->assertTrue($this->generator->isUsernameCandidateAllowed(['core_key' => 'other:musikbogen', 'base' => 'musikbogen'], $history));
+    }
+
+    public function test_username_generation_can_be_reproduced_without_seeding_global_randomness(): void
+    {
+        $source = static function (): \Closure {
+            $seed = 271828;
+
+            return static function (int $min, int $max) use (&$seed): int {
+                $seed = ($seed * 48271) % 2147483647;
+
+                return $min + ($seed % ($max - $min + 1));
+            };
+        };
+        $first = new SyntheticIdentityGenerator($source());
+        $second = new SyntheticIdentityGenerator($source());
+        $persona = ['first_name' => 'Xaver', 'last_name' => 'Quendler', 'birth_year' => 1977, 'city' => 'Hamburg'];
+        $history = [];
+        for ($i = 0; $i < 10; $i++) {
+            $a = $first->usernameCandidate($persona, fn (): bool => false, 'repeatable', $history);
+            $b = $second->usernameCandidate($persona, fn (): bool => false, 'repeatable', $history);
+            $this->assertSame($a, $b);
+            $history[] = $a;
+        }
+    }
+
+    public function test_search_budget_failure_does_not_bypass_quality_with_numbers(): void
+    {
+        config()->set('username_generation.candidate_batch', 2);
+        config()->set('username_generation.candidate_rounds', 1);
+        config()->set('username_generation.search_budget', 4);
+        config()->set('username_generation.fallback_search_budget', 2);
+        $generator = new SyntheticIdentityGenerator;
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Suchbudgets');
+        $generator->usernameCandidate(['first_name' => 'Xaver', 'last_name' => 'Quendler'], fn (): bool => true, 'no-fallback');
     }
 
     public function test_username_generation_rejects_name_based_aliases_and_pool_collisions(): void
@@ -214,6 +283,8 @@ class SyntheticIdentityGeneratorTest extends TestCase
         $this->assertFalse($this->generator->isPseudonymUsername($persona, 'berg2014'));
         $this->assertTrue($this->generator->isPseudonymUsername($persona, 'ruhepol'));
         $this->assertTrue($this->generator->isPseudonymUsername($persona, 'ruhepol_wfb88'));
+        $this->assertFalse($this->generator->isPseudonymUsername(['last_name' => 'Glück'], 'gluecklicher.sammler'));
+        $this->assertFalse($this->generator->isPseudonymUsername(['last_name' => 'Glück'], 'gluckskind'));
 
         for ($i = 0; $i < 200; $i++) {
             $username = $this->generator->username(
@@ -510,5 +581,7 @@ class SyntheticIdentityGeneratorTest extends TestCase
             $table->timestamps();
             $table->softDeletes();
         });
+
+        (require database_path('migrations/2026_11_16_000001_create_synthetic_username_registry.php'))->up();
     }
 }

@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use App\Services\UsernameAllocator;
 use App\Support\Rating\SyntheticIdentityGenerator;
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -40,67 +42,92 @@ class SyntheticRatingUser extends Model
         return $this->hasMany(ClaimRating::class);
     }
 
-    public static function createForClaimRating(?ClaimRating $claimRating = null): self
+    public static function createForClaimRating(?ClaimRating $claimRating = null, ?DateTimeInterface $plannedFor = null): self
     {
+        if ($claimRating?->exists) {
+            $claimRating->refresh();
+        }
+
+        if ($claimRating?->synthetic_rating_user_id && self::withTrashed()->whereKey($claimRating->synthetic_rating_user_id)->exists()) {
+            return self::ensureForClaimRating($claimRating);
+        }
+
         $token = strtolower((string) Str::random(12));
         $nameMode = self::syntheticUserNameMode();
         $privacySettings = self::privacySettingsForNameMode(self::privacySettingsFromAnalysis(), $nameMode);
         $identityGenerator = new SyntheticIdentityGenerator;
         $persona = $identityGenerator->persona($privacySettings);
-        $username = $identityGenerator->username(
-            $persona,
-            fn (string $candidate): bool => self::withTrashed()->where('username', $candidate)->exists(),
-            $token
-        );
         $emailProfile = self::emailDomainProfile($identityGenerator);
-        $emailDomain = $emailProfile['domain'];
-        $email = $identityGenerator->email(
-            $persona,
-            $emailDomain,
-            fn (string $candidate): bool => self::withTrashed()->where('email', $candidate)->exists(),
-            $token
-        );
+        $generationPersona = self::generationPersona($persona, $plannedFor ?? $claimRating?->scheduled_for);
 
-        $syntheticUser = self::create([
-            'base_user_id' => null,
-            'name' => $username,
-            'first_name' => $persona['first_name'] ?? null,
-            'last_name' => $persona['last_name'] ?? null,
-            'username' => $username,
-            'email' => $email,
-            'email_domain' => $emailDomain,
-            'role' => 'guest',
-            'status' => true,
-            'email_verified_at' => now(),
-            'data' => [
-                'synthetic' => true,
-                'do_not_publish' => true,
-                'source_app' => '2261-better',
-                'created_by' => $claimRating ? 'claim_rating_ai_generation' : 'claim_rating_planning',
-                'created_from_claim_rating_id' => $claimRating?->id,
-                'persona' => $persona,
-                'name_mode' => $nameMode,
-                'email_profile' => [
-                    'domain' => $emailDomain,
-                    'source' => $emailProfile['source'],
-                    'excluded_domains' => self::excludedEmailDomains(),
-                ],
-                'privacy_settings' => $privacySettings,
-                'visibility_profile' => [
-                    'ratings_name_visible_to' => data_get($privacySettings, 'ratings.name_visibility', 'none'),
-                    'ratings_avatar_visible_to' => data_get($privacySettings, 'ratings.avatar_visibility', 'none'),
-                ],
-            ],
-        ]);
+        return app(UsernameAllocator::class)->create($generationPersona, function (array $allocation) use ($claimRating, $persona, $nameMode, $privacySettings, $identityGenerator, $emailProfile, $token): self {
+            if ($claimRating) {
+                $lockedRating = ClaimRating::query()->whereKey($claimRating->id)->lockForUpdate()->firstOrFail();
 
-        if ($claimRating) {
-            $claimRating->forceFill([
-                'synthetic_rating_user_id' => $syntheticUser->id,
+                if ($lockedRating->synthetic_rating_user_id) {
+                    $existing = self::withTrashed()->find($lockedRating->synthetic_rating_user_id);
+
+                    if ($existing) {
+                        if ($existing->trashed()) {
+                            $existing->restore();
+                        }
+                        $claimRating->setRawAttributes($lockedRating->getAttributes(), true);
+
+                        return $existing;
+                    }
+                }
+            }
+
+            $username = $allocation['username'];
+            $emailDomain = $emailProfile['domain'];
+            $email = $identityGenerator->email(
+                $persona,
+                $emailDomain,
+                fn (string $candidate): bool => self::withTrashed()->where('email', $candidate)->exists(),
+                $token
+            );
+            $syntheticUser = self::create([
                 'base_user_id' => null,
-            ])->saveQuietly();
-        }
+                'name' => $username,
+                'first_name' => $persona['first_name'] ?? null,
+                'last_name' => $persona['last_name'] ?? null,
+                'username' => $username,
+                'email' => $email,
+                'email_domain' => $emailDomain,
+                'role' => 'guest',
+                'status' => true,
+                'email_verified_at' => now(),
+                'data' => [
+                    'synthetic' => true,
+                    'do_not_publish' => true,
+                    'source_app' => '2261-better',
+                    'created_by' => $claimRating ? 'claim_rating_ai_generation' : 'claim_rating_planning',
+                    'created_from_claim_rating_id' => $claimRating?->id,
+                    'persona' => $persona,
+                    'username_generation' => $allocation,
+                    'name_mode' => $nameMode,
+                    'email_profile' => [
+                        'domain' => $emailDomain,
+                        'source' => $emailProfile['source'],
+                        'excluded_domains' => self::excludedEmailDomains(),
+                    ],
+                    'privacy_settings' => $privacySettings,
+                    'visibility_profile' => [
+                        'ratings_name_visible_to' => data_get($privacySettings, 'ratings.name_visibility', 'none'),
+                        'ratings_avatar_visible_to' => data_get($privacySettings, 'ratings.avatar_visibility', 'none'),
+                    ],
+                ],
+            ]);
 
-        return $syntheticUser;
+            if ($claimRating) {
+                $claimRating->forceFill([
+                    'synthetic_rating_user_id' => $syntheticUser->id,
+                    'base_user_id' => null,
+                ])->saveQuietly();
+            }
+
+            return $syntheticUser;
+        }, $token);
     }
 
     public static function ensureForClaimRating(ClaimRating $claimRating): self
@@ -128,47 +155,49 @@ class SyntheticRatingUser extends Model
             $privacySettings = self::privacySettingsForNameMode($privacySettings, $nameMode);
             $persona = data_get($profile, 'persona');
             $identityGenerator = new SyntheticIdentityGenerator;
-            $persona = is_array($persona)
-                ? $persona
-                : $identityGenerator->persona($privacySettings);
-            $username = (string) ($profile['username'] ?? '');
+            $persona = is_array($persona) ? $persona : $identityGenerator->persona($privacySettings);
+            $syntheticUser = self::withTrashed()->where('email', $email)->first();
 
-            if ($username === '' || ! $identityGenerator->isPseudonymUsername($persona, $username)) {
-                $username = $identityGenerator->username(
-                    $persona,
-                    fn (string $candidate): bool => self::withTrashed()->where('username', $candidate)->exists(),
-                    (string) Str::random(12)
-                );
+            if (! $syntheticUser) {
+                $generationPersona = self::generationPersona($persona, $claimRating->scheduled_for);
+                $syntheticUser = app(UsernameAllocator::class)->create($generationPersona, function (array $allocation) use ($claimRating, $profile, $email, $nameMode, $privacySettings, $persona): self {
+                    $syntheticUser = self::withTrashed()->firstOrCreate(
+                        ['email' => $email],
+                        [
+                            'base_user_id' => $claimRating->base_user_id,
+                            'name' => $allocation['username'],
+                            'first_name' => $persona['first_name'] ?? null,
+                            'last_name' => $persona['last_name'] ?? null,
+                            'username' => $allocation['username'],
+                            'email_domain' => self::domainFromEmail($email),
+                            'role' => (string) ($profile['role'] ?? 'guest'),
+                            'status' => (bool) ($profile['status'] ?? true),
+                            'email_verified_at' => (string) ($profile['email_verified_at'] ?? now()->toDateTimeString()),
+                            'data' => [
+                                'synthetic' => true,
+                                'do_not_publish' => true,
+                                'source_app' => '2261-better',
+                                'created_from_claim_rating_id' => $claimRating->id,
+                                'persona' => $persona,
+                                'username_generation' => $allocation,
+                                'name_mode' => $nameMode,
+                                'email_profile' => [
+                                    'domain' => self::domainFromEmail($email),
+                                    'source' => data_get($profile, 'email_profile.source', 'planning_profile'),
+                                    'excluded_domains' => self::excludedEmailDomains(),
+                                ],
+                                'privacy_settings' => $privacySettings,
+                            ],
+                        ]
+                    );
+                    $claimRating->forceFill([
+                        'synthetic_rating_user_id' => $syntheticUser->id,
+                        'base_user_id' => $claimRating->base_user_id ?: $syntheticUser->base_user_id,
+                    ])->saveQuietly();
+
+                    return $syntheticUser;
+                }, (string) Str::random(12), (string) ($profile['username'] ?? ''));
             }
-
-            $syntheticUser = self::withTrashed()->firstOrCreate(
-                ['email' => $email],
-                [
-                    'base_user_id' => $claimRating->base_user_id,
-                    'name' => $username,
-                    'first_name' => $persona['first_name'] ?? null,
-                    'last_name' => $persona['last_name'] ?? null,
-                    'username' => $username,
-                    'email_domain' => self::domainFromEmail($email),
-                    'role' => (string) ($profile['role'] ?? 'guest'),
-                    'status' => (bool) ($profile['status'] ?? true),
-                    'email_verified_at' => (string) ($profile['email_verified_at'] ?? now()->toDateTimeString()),
-                    'data' => [
-                        'synthetic' => true,
-                        'do_not_publish' => true,
-                        'source_app' => '2261-better',
-                        'created_from_claim_rating_id' => $claimRating->id,
-                        'persona' => $persona,
-                        'name_mode' => $nameMode,
-                        'email_profile' => [
-                            'domain' => self::domainFromEmail($email),
-                            'source' => data_get($profile, 'email_profile.source', 'planning_profile'),
-                            'excluded_domains' => self::excludedEmailDomains(),
-                        ],
-                        'privacy_settings' => $privacySettings,
-                    ],
-                ]
-            );
 
             if ($syntheticUser->trashed()) {
                 $syntheticUser->restore();
@@ -183,6 +212,17 @@ class SyntheticRatingUser extends Model
         ])->saveQuietly();
 
         return $syntheticUser;
+    }
+
+    private static function generationPersona(array $persona, ?DateTimeInterface $plannedFor): array
+    {
+        if ($plannedFor) {
+            $persona['username_generation_day'] = \DateTimeImmutable::createFromInterface($plannedFor)
+                ->setTimezone(new \DateTimeZone((string) config('app.timezone', 'Europe/Berlin')))
+                ->format('Y-m-d');
+        }
+
+        return $persona;
     }
 
     /**
@@ -204,6 +244,7 @@ class SyntheticRatingUser extends Model
             'status' => $this->status,
             'email_verified_at' => $this->email_verified_at?->toDateTimeString() ?? now()->toDateTimeString(),
             'persona' => data_get($this->data ?? [], 'persona', []),
+            'username_generation' => data_get($this->data ?? [], 'username_generation', []),
             'privacy_settings' => $this->privacySettings(),
         ];
     }

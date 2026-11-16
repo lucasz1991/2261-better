@@ -24,97 +24,132 @@
             @endphp
 
             <div class="max-h-[72vh] space-y-4 overflow-y-auto pr-1 text-slate-700">
+                @if (session()->has('success'))
+                    <div role="status" class="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{{ session('success') }}</div>
+                @endif
+                @if (session()->has('error'))
+                    <div role="alert" class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{{ session('error') }}</div>
+                @endif
+                @if ($errors->any())
+                    <div role="alert" class="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+                        <ul class="list-inside list-disc">@foreach ($errors->all() as $message)<li>{{ $message }}</li>@endforeach</ul>
+                    </div>
+                @endif
                 @if($this->canEditSelectedRating())
-                    <details open class="group rounded-md border border-emerald-200 bg-emerald-50/70">
-                        <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
-                            <div>
-                                <h3 class="text-sm font-semibold text-emerald-950">Geplante Bewertung bearbeiten</h3>
-                                <p class="mt-0.5 text-xs text-emerald-700">Antworten, Bewertungskonfiguration und synthetischer Benutzer sind editierbar, solange noch keine Ausfuehrung/Base-ID existiert.</p>
+                    @php
+                        $isPublishedEdit = (bool) ($selectedRating->executed_at || $selectedRating->base_claim_rating_id);
+                        $affectedCount = $syntheticUser?->claimRatings()->count() ?? 0;
+                        $visibility = $editBaseSnapshot['privacy_name_visibility'] ?? data_get($syntheticUser?->data, 'privacy_settings.ratings.name_visibility', 'none');
+                        $guestNameVisible = in_array($visibility, ['all', 'guest'], true);
+                    @endphp
+                    <form wire:submit="saveRatingDetailEdits" class="rounded-lg border border-emerald-200 bg-emerald-50/50 p-4">
+                        <h3 class="text-base font-semibold text-emerald-950">{{ $isPublishedEdit ? 'Veröffentlichte Bewertung bearbeiten' : 'Geplante Bewertung bearbeiten' }}</h3>
+                        <p class="mt-1 text-sm text-emerald-800">Anzeigename und Benutzername werden getrennt gespeichert. Änderungen am Benutzer gelten für {{ $affectedCount }} zugehörige Bewertung(en).</p>
+                        @if ($editBaseError)
+                            <div role="alert" class="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">{{ $editBaseError }}</div>
+                        @endif
+                        <fieldset class="mt-4 space-y-4" @disabled(! \Illuminate\Support\Facades\Gate::allows('synthetic_users.edit'))>
+                            <legend class="text-sm font-semibold text-slate-900">Benutzer</legend>
+                            <div class="grid gap-3 md:grid-cols-2">
+                                @foreach (['editUserName' => 'Anzeigename', 'editUserUsername' => 'Benutzername', 'editUserFirstName' => 'Vorname', 'editUserLastName' => 'Nachname'] as $binding => $label)
+                                    <label for="rating-{{ $binding }}" class="block text-sm font-medium text-slate-800">{{ $label }}
+                                        <input id="rating-{{ $binding }}" type="text" wire:model="{{ $binding }}" maxlength="{{ $binding === 'editUserUsername' ? 42 : ($binding === 'editUserName' ? 191 : 100) }}" class="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100">
+                                    </label>
+                                @endforeach
                             </div>
-                            <i class="fal fa-chevron-down text-emerald-600 transition group-open:rotate-180"></i>
-                        </summary>
+                            <div class="flex flex-wrap items-center gap-3">
+                                <button type="button" wire:click="suggestRatingUsernames" wire:loading.attr="disabled" wire:target="suggestRatingUsernames" class="rounded-md border border-emerald-700 bg-white px-3 py-2 text-sm font-semibold text-emerald-800 disabled:opacity-50">Andere Benutzernamen vorschlagen</button>
+                                <label class="flex items-center gap-2 text-sm"><input type="checkbox" wire:model="editApplySuggestionToName" class="rounded border-slate-300">Vorschlag auch als Anzeigenamen übernehmen</label>
+                                <span wire:loading wire:target="suggestRatingUsernames" class="text-sm text-slate-500">Vorschläge werden geprüft …</span>
+                            </div>
+                            @if ($editUsernameSuggestions)
+                                <div class="flex flex-wrap gap-2">
+                                    @foreach ($editUsernameSuggestions as $index => $suggestion)
+                                        <button type="button" wire:click="useRatingUsernameSuggestion({{ $index }})" class="rounded-full border border-emerald-300 bg-white px-3 py-1.5 text-sm text-emerald-900">{{ $suggestion['username'] }}</button>
+                                    @endforeach
+                                </div>
+                                <p class="text-xs text-slate-500">Vorschläge sind noch nicht reserviert und werden beim Speichern erneut geprüft.</p>
+                            @endif
+                        </fieldset>
+                        <div class="mt-4 rounded-md border border-slate-200 bg-white p-3">
+                            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Vorschau für nicht angemeldete Besucher</p>
+                            <p class="mt-1 font-semibold text-slate-900" @if($guestNameVisible) x-text="$wire.editUserName" @endif>{{ $guestNameVisible ? $editUserName : 'Anonym' }}</p>
+                            <p class="mt-1 text-xs text-slate-500">Die vorhandene Sichtbarkeit bleibt erhalten. Benutzername: {{ $editUserUsername }}</p>
+                        </div>
+                        <fieldset class="mt-5 space-y-3">
+                            <legend class="text-sm font-semibold text-slate-900">Bewertung</legend>
+                            <label for="rating-edit-summary" class="block text-sm font-medium text-slate-800">Öffentlicher Bewertungstext
+                                <textarea id="rating-edit-summary" wire:model="editSummary" rows="4" maxlength="10000" class="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"></textarea>
+                            </label>
+                            <label for="rating-edit-comment" class="block text-sm font-medium text-slate-800">Kommentar zur Regulierung
+                                <textarea id="rating-edit-comment" wire:model="editRegulationComment" rows="3" maxlength="10000" class="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"></textarea>
+                            </label>
+                            <div class="grid gap-3 md:grid-cols-2">
+                                <label for="rating-edit-score" class="block text-sm font-medium text-slate-800">Score (0 bis 1)
+                                    <input id="rating-edit-score" type="number" min="0" max="1" step="0.01" wire:model="editRatingScore" class="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
+                                </label>
+                                @if (! $isPublishedEdit)
+                                    <label for="rating-edit-scheduled-for" class="block text-sm font-medium text-slate-800">Geplante Ausführung
+                                        <input id="rating-edit-scheduled-for" type="datetime-local" wire:model="editScheduledFor" class="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
+                                    </label>
+                                @endif
+                            </div>
+                            <label class="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" wire:model="editContentConfirmed" class="mt-0.5 rounded border-slate-300">Bei einer Inhaltsänderung: Ich habe geprüft, dass Bewertungstext, Kommentar und Score zusammenpassen. Es wird keine automatische AI-Neubewertung ausgelöst.</label>
+                        </fieldset>
+                        <label for="rating-edit-reason" class="mt-4 block text-sm font-medium text-slate-800">Änderungsgrund
+                            <input id="rating-edit-reason" type="text" wire:model="editReason" maxlength="1000" placeholder="Welche Angaben werden korrigiert?" class="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
+                        </label>
+                        <div class="mt-4 flex items-center justify-between gap-3">
+                            <p class="text-xs text-slate-600">Bestehende IDs, Veröffentlichung und Sichtbarkeit bleiben erhalten.</p>
+                            <button type="submit" wire:loading.attr="disabled" wire:target="saveRatingDetailEdits" @disabled($editBaseError !== '') class="shrink-0 rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50">
+                                <span wire:loading.remove wire:target="saveRatingDetailEdits">Änderungen speichern</span><span wire:loading wire:target="saveRatingDetailEdits">Speichert …</span>
+                            </button>
+                        </div>
+                    </form>
+                @else
+                    <div class="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">Dieser Datensatz ist derzeit schreibgeschützt oder Sie haben keine Bearbeitungsberechtigung.</div>
+                @endif
 
-                        <div class="space-y-4 border-t border-emerald-100 px-4 py-4">
-                            <div class="grid gap-3 md:grid-cols-3">
-                                <div>
-                                    <label for="rating-edit-scheduled-for" class="block text-xs font-semibold uppercase tracking-wide text-emerald-800">Ausfuehrungszeit</label>
-                                    <input id="rating-edit-scheduled-for" type="datetime-local" wire:model.defer="editScheduledFor" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500">
-                                </div>
-                                <div>
-                                    <label for="rating-edit-score" class="block text-xs font-semibold uppercase tracking-wide text-emerald-800">Score</label>
-                                    <input id="rating-edit-score" type="number" min="0" max="1" step="0.01" wire:model.defer="editRatingScore" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500">
-                                </div>
-                                <label for="rating-edit-user-status" class="flex items-center gap-2 rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm font-medium text-emerald-950">
-                                    <input id="rating-edit-user-status" type="checkbox" wire:model.defer="editUserStatus" class="rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500">
-                                    Benutzer aktiv
-                                </label>
-                            </div>
-
-                            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                                <div>
-                                    <label for="rating-edit-user-name" class="block text-xs font-semibold uppercase tracking-wide text-emerald-800">Benutzername</label>
-                                    <input id="rating-edit-user-name" type="text" wire:model.defer="editUserName" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500">
-                                </div>
-                                <div>
-                                    <label for="rating-edit-user-first-name" class="block text-xs font-semibold uppercase tracking-wide text-emerald-800">Vorname</label>
-                                    <input id="rating-edit-user-first-name" type="text" wire:model.defer="editUserFirstName" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500">
-                                </div>
-                                <div>
-                                    <label for="rating-edit-user-last-name" class="block text-xs font-semibold uppercase tracking-wide text-emerald-800">Nachname</label>
-                                    <input id="rating-edit-user-last-name" type="text" wire:model.defer="editUserLastName" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500">
-                                </div>
-                                <div>
-                                    <label for="rating-edit-user-username" class="block text-xs font-semibold uppercase tracking-wide text-emerald-800">Username</label>
-                                    <input id="rating-edit-user-username" type="text" wire:model.defer="editUserUsername" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500">
-                                </div>
-                                <div>
-                                    <label for="rating-edit-user-email-verified" class="block text-xs font-semibold uppercase tracking-wide text-emerald-800">E-Mail verifiziert</label>
-                                    <input id="rating-edit-user-email-verified" type="datetime-local" wire:model.defer="editUserEmailVerifiedAt" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500">
-                                </div>
-                            </div>
-
-                            <div>
-                                <label for="rating-edit-user-email" class="block text-xs font-semibold uppercase tracking-wide text-emerald-800">E-Mail</label>
-                                <input id="rating-edit-user-email" type="email" wire:model.defer="editUserEmail" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500">
-                            </div>
-
-                            <div class="grid gap-3 xl:grid-cols-2">
-                                <label class="block">
-                                    <span class="text-xs font-semibold uppercase tracking-wide text-emerald-800">Antworten JSON</span>
-                                    <textarea wire:model.defer="editAnswersJson" rows="12" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 font-mono text-xs shadow-sm focus:border-emerald-500 focus:ring-emerald-500"></textarea>
-                                </label>
-                                <label class="block">
-                                    <span class="text-xs font-semibold uppercase tracking-wide text-emerald-800">Bewertungsdaten JSON</span>
-                                    <textarea wire:model.defer="editDataJson" rows="12" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 font-mono text-xs shadow-sm focus:border-emerald-500 focus:ring-emerald-500"></textarea>
-                                </label>
-                                <label class="block">
-                                    <span class="text-xs font-semibold uppercase tracking-wide text-emerald-800">Attachments JSON</span>
-                                    <textarea wire:model.defer="editAttachmentsJson" rows="10" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 font-mono text-xs shadow-sm focus:border-emerald-500 focus:ring-emerald-500"></textarea>
-                                </label>
-                                <label class="block">
-                                    <span class="text-xs font-semibold uppercase tracking-wide text-emerald-800">Benutzer-Daten JSON</span>
-                                    <textarea wire:model.defer="editUserDataJson" rows="10" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 font-mono text-xs shadow-sm focus:border-emerald-500 focus:ring-emerald-500"></textarea>
-                                </label>
-                                <label class="block xl:col-span-2">
-                                    <span class="text-xs font-semibold uppercase tracking-wide text-emerald-800">Admin-Review JSON</span>
-                                    <textarea wire:model.defer="editAdminReviewJson" rows="6" class="mt-1 block w-full rounded-md border border-emerald-200 bg-white px-3 py-2 font-mono text-xs shadow-sm focus:border-emerald-500 focus:ring-emerald-500"></textarea>
-                                </label>
-                            </div>
-
-                            <div class="flex justify-end">
-                                <button type="button" wire:click="saveRatingDetailEdits" wire:loading.attr="disabled" wire:target="saveRatingDetailEdits" class="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50">
-                                    <i class="fal fa-save" wire:loading.remove wire:target="saveRatingDetailEdits"></i>
-                                    <i class="fal fa-spinner fa-spin" wire:loading wire:target="saveRatingDetailEdits"></i>
-                                    <span wire:loading.remove wire:target="saveRatingDetailEdits">Aenderungen speichern</span>
-                                    <span wire:loading wire:target="saveRatingDetailEdits">Speichert...</span>
-                                </button>
-                            </div>
+                @if ($this->ratingEditHistory())
+                    <details open class="rounded-lg border border-slate-200 bg-white">
+                        <summary class="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-900">Änderungsverlauf dieses Benutzers</summary>
+                        <div class="space-y-3 border-t border-slate-100 p-4">
+                            @foreach ($this->ratingEditHistory() as $revision)
+                                <article wire:key="rating-edit-revision-{{ $revision->id }}" class="rounded-md border border-slate-200 p-3 text-sm">
+                                    <div class="flex flex-wrap justify-between gap-2"><strong>{{ $revision->status_label }}</strong><span class="text-xs text-slate-500">{{ $revision->created_at->format('d.m.Y H:i') }} · Bearbeiter #{{ $revision->actor_id ?? 'System' }} · Bewertung #{{ $revision->claim_rating_id }}</span></div>
+                                    <p class="mt-1 text-slate-700">{{ $revision->reason }}</p>
+                                    <dl class="mt-2 space-y-1">
+                                        @foreach (['user' => 'Benutzer', 'rating' => 'Bewertung'] as $group => $groupLabel)
+                                            @foreach (($revision->changes[$group] ?? []) as $field => $change)
+                                                <div class="grid gap-1 md:grid-cols-3"><dt class="font-medium">{{ $groupLabel }}: {{ $field }}</dt><dd class="break-words text-slate-500">{{ $change['before'] ?? '—' }}</dd><dd class="break-words text-slate-900">{{ $change['after'] ?? '—' }}</dd></div>
+                                            @endforeach
+                                        @endforeach
+                                    </dl>
+                                    @if ($revision->last_error)<p class="mt-2 text-amber-800">{{ $revision->last_error }}</p>@endif
+                                    @if (in_array($revision->status, ['pending', 'failed'], true))
+                                        @can('ratings.edit_published')<button type="button" wire:click="retryRatingEdit({{ $revision->id }})" wire:loading.attr="disabled" class="mt-2 rounded-md border border-slate-300 px-3 py-1.5 font-medium">Erneut übertragen</button>@endcan
+                                    @endif
+                                    @if (in_array($revision->status, ['synced', 'local'], true) && (int) $revision->claim_rating_id === (int) $selectedRating->id)
+                                        @can('ratings.edit')<button type="button" wire:click="prepareRatingEditRestore({{ $revision->id }})" class="mt-2 rounded-md border border-slate-300 px-3 py-1.5 font-medium">Vorherwerte ins Formular laden</button>@endcan
+                                    @endif
+                                    @if ($revision->status === 'conflict' && (int) $revision->claim_rating_id === (int) $selectedRating->id && $editBaseSnapshot)
+                                        <div class="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3">
+                                            <p class="font-semibold text-amber-900">Aktuelle Basewerte mit den gewünschten Änderungen oben vergleichen</p>
+                                            <p class="mt-1 text-xs text-amber-900">Bei einem belegten Benutzernamen können Sie oben einen freien Zielwert eingeben und normal speichern. Eine noch nicht angewendete Änderung kann auch verworfen werden.</p>
+                                            @foreach (['user' => 'user', 'rating' => 'rating'] as $group => $snapshotGroup)
+                                                @foreach (($revision->changes[$group] ?? []) as $field => $change)
+                                                    <p class="mt-1 break-words text-xs">{{ $field }} aktuell in Base: {{ data_get($editBaseSnapshot, $snapshotGroup.'.'.$field, '—') }}</p>
+                                                @endforeach
+                                            @endforeach
+                                            <label class="mt-2 flex items-start gap-2 text-sm"><input type="checkbox" wire:model="editConflictConfirmed" class="mt-0.5 rounded border-slate-300">Ich habe die aktuellen Werte geprüft und bestätige die gewählte Konfliktaktion.</label>
+                                            @can('ratings.edit_published')<button type="button" wire:click="resolveRatingEditConflict({{ $revision->id }})" wire:loading.attr="disabled" class="mt-2 rounded-md border border-amber-800 px-3 py-1.5 font-medium text-amber-950">Konflikt mit Änderungsgrund oben auflösen</button>@endcan
+                                            @can('ratings.edit_published')<button type="button" wire:click="discardRatingEditConflict({{ $revision->id }})" wire:loading.attr="disabled" class="mt-2 rounded-md border border-slate-400 px-3 py-1.5 font-medium">Unübertragene Änderung verwerfen</button>@endcan
+                                        </div>
+                                    @endif
+                                </article>
+                            @endforeach
                         </div>
                     </details>
-                @elseif(! $selectedRating->executed_at && ! $selectedRating->base_claim_rating_id)
-                    <div class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                        Diese Bewertung ist aktuell nicht editierbar, weil sie verarbeitet wird oder in keinem bearbeitbaren Planungszustand ist.
-                    </div>
                 @endif
 
                 <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">

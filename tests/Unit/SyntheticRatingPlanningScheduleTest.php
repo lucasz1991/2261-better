@@ -37,4 +37,14 @@ class SyntheticRatingPlanningScheduleTest extends TestCase
         $this->assertCount(1, $executionEvents);
         $this->assertSame('* * * * *', $executionEvents->first()->expression);
     }
+
+    public function test_pending_edit_synchronization_runs_every_minute_without_overlapping(): void
+    {
+        $schedule = new Schedule(config('app.timezone'));
+        (new ReflectionMethod(app(Kernel::class), 'schedule'))->invoke(app(Kernel::class), $schedule);
+        $events = collect($schedule->events())->filter(fn ($event): bool => str_contains((string) $event->command, 'ratings:sync-edits'))->values();
+        $this->assertCount(1, $events);
+        $this->assertSame('* * * * *', $events->first()->expression);
+        $this->assertTrue($events->first()->withoutOverlapping);
+    }
 }

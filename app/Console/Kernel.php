@@ -5,7 +5,6 @@ namespace App\Console;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 
-
 class Kernel extends ConsoleKernel
 {
     /**
@@ -18,6 +17,10 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping();
 
         $schedule->command('ratings:run-due-synthetic')
+            ->everyMinute()
+            ->withoutOverlapping();
+
+        $schedule->command('ratings:sync-edits')
             ->everyMinute()
             ->withoutOverlapping();
     }

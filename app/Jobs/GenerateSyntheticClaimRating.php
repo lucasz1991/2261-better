@@ -8,12 +8,14 @@ use App\Models\SyntheticRatingUser;
 use App\Services\AiConnection;
 use App\Services\BaseClaimRatingPublisher;
 use App\Services\RatingDistributionAnalyzer;
+use App\Support\Rating\ManualRatingEdits;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class GenerateSyntheticClaimRating implements ShouldQueue
@@ -24,23 +26,23 @@ class GenerateSyntheticClaimRating implements ShouldQueue
     use SerializesModels;
 
     private const AI_VARIATION_SETTING_TYPE = 'claim_rating_ai';
+
     private const AI_VARIATION_SETTING_KEY = 'variation_settings';
 
     public int $tries = 2;
+
     public int $timeout = 240;
 
     public function __construct(
         public ClaimRating $claimRating,
         public bool $markExecuted = true,
-    ) {
-    }
+    ) {}
 
     public function handle(
         AiConnection $aiConnection,
         RatingDistributionAnalyzer $analyzer,
         BaseClaimRatingPublisher $basePublisher,
-    ): void
-    {
+    ): void {
         $this->claimRating->refresh();
 
         if ($this->claimRating->executed_at || $this->claimRating->isRetracted()) {
@@ -68,6 +70,10 @@ class GenerateSyntheticClaimRating implements ShouldQueue
 
             $this->ensureSyntheticUserForAiRun();
 
+            if ($this->claimRating->executed_at || $this->claimRating->isRetracted()) {
+                return;
+            }
+
             $payload = $aiConnection->generateSyntheticClaimRatingPayload([
                 'trainContent' => $this->generationPrompt(),
                 'context' => $this->generationContext($baseContext, $analyzer),
@@ -77,41 +83,51 @@ class GenerateSyntheticClaimRating implements ShouldQueue
                 throw new \RuntimeException('AI did not return usable answers.');
             }
 
-            $this->claimRating->refresh();
+            // The AI call stays outside the transaction. Merge its result with
+            // one locked current row, including profile updates from siblings.
+            $saved = DB::transaction(function () use ($payload, $baseContext): bool {
+                $current = ClaimRating::query()->lockForUpdate()->find($this->claimRating->id);
+                if (! $current || $current->executed_at || $current->isRetracted()) {
+                    return false;
+                }
 
-            if ($this->claimRating->isRetracted()) {
+                $this->claimRating = $current;
+                $answers = $this->normalizeAnswers($payload['answers'], $baseContext);
+                $answers = ManualRatingEdits::answers($answers, $current);
+                $attachments = $current->attachments ?? [];
+                $data = $current->data ?? [];
+
+                $attachments['questionnaire_snapshot'] = $baseContext['questionnaire_version']['snapshot'] ?? [];
+                $attachments['generation']['comment'] = $payload['generation_comment'] ?? '';
+                $attachments['generation']['generated_at'] = now()->toDateTimeString();
+
+                $data['ai_generation'] = [
+                    'generated_at' => now()->toDateTimeString(),
+                    'generator' => self::class,
+                    'prepared_only' => ! $this->markExecuted,
+                    'scheduled_for' => optional($current->scheduled_for)->toDateTimeString(),
+                    'comment' => $payload['generation_comment'] ?? '',
+                ];
+
+                $current->forceFill([
+                    'insurance_type_id' => $baseContext['insurance_type']['id'] ?? $current->insurance_type_id,
+                    'insurance_subtype_id' => $baseContext['insurance_subtype']['id'] ?? $current->insurance_subtype_id,
+                    'insurance_id' => $baseContext['insurance']['id'] ?? $current->insurance_id,
+                    'rating_questionnaire_versions_id' => $baseContext['questionnaire_version']['id'] ?? $current->rating_questionnaire_versions_id,
+                    'answers' => $answers,
+                    'attachments' => $attachments,
+                    'data' => $data,
+                    'status' => ClaimRating::STATUS_PROCESSING,
+                    'executed_at' => null,
+                    'is_public' => true,
+                    'moderator_comment' => null,
+                ])->saveQuietly();
+
+                return true;
+            }, 3);
+            if (! $saved) {
                 return;
             }
-
-            $answers = $this->normalizeAnswers($payload['answers'], $baseContext);
-            $attachments = $this->claimRating->attachments ?? [];
-            $data = $this->claimRating->data ?? [];
-
-            $attachments['questionnaire_snapshot'] = $baseContext['questionnaire_version']['snapshot'] ?? [];
-            $attachments['generation']['comment'] = $payload['generation_comment'] ?? '';
-            $attachments['generation']['generated_at'] = now()->toDateTimeString();
-
-            $data['ai_generation'] = [
-                'generated_at' => now()->toDateTimeString(),
-                'generator' => self::class,
-                'prepared_only' => ! $this->markExecuted,
-                'scheduled_for' => optional($this->claimRating->scheduled_for)->toDateTimeString(),
-                'comment' => $payload['generation_comment'] ?? '',
-            ];
-
-            $this->claimRating->forceFill([
-                'insurance_type_id' => $baseContext['insurance_type']['id'] ?? $this->claimRating->insurance_type_id,
-                'insurance_subtype_id' => $baseContext['insurance_subtype']['id'] ?? $this->claimRating->insurance_subtype_id,
-                'insurance_id' => $baseContext['insurance']['id'] ?? $this->claimRating->insurance_id,
-                'rating_questionnaire_versions_id' => $baseContext['questionnaire_version']['id'] ?? $this->claimRating->rating_questionnaire_versions_id,
-                'answers' => $answers,
-                'attachments' => $attachments,
-                'data' => $data,
-                'status' => ClaimRating::STATUS_PROCESSING,
-                'executed_at' => null,
-                'is_public' => true,
-                'moderator_comment' => null,
-            ])->saveQuietly();
 
             ClaimRatingAIEval::dispatchSync($this->claimRating->fresh(), false, $this->markExecuted);
 
@@ -125,10 +141,17 @@ class GenerateSyntheticClaimRating implements ShouldQueue
                 $basePublisher->publish($this->claimRating->fresh());
             }
         } catch (\Throwable $exception) {
-            $this->claimRating->forceFill([
-                'status' => ClaimRating::STATUS_FAILED,
-                'last_execution_error' => $exception->getMessage(),
-            ])->saveQuietly();
+            // A rolled-back save may leave generated fields dirty in memory.
+            // Record only the failure on a fresh row, preserving later edits.
+            DB::transaction(function () use ($exception): void {
+                $current = ClaimRating::query()->lockForUpdate()->find($this->claimRating->id);
+                if ($current && ! $current->executed_at && ! $current->isRetracted()) {
+                    $current->forceFill([
+                        'status' => ClaimRating::STATUS_FAILED,
+                        'last_execution_error' => $exception->getMessage(),
+                    ])->saveQuietly();
+                }
+            }, 3);
 
             Log::error('Synthetic claim rating generation failed.', [
                 'claim_rating_id' => $this->claimRating->id,
@@ -143,17 +166,24 @@ class GenerateSyntheticClaimRating implements ShouldQueue
     private function ensureSyntheticUserForAiRun(): void
     {
         $syntheticUser = SyntheticRatingUser::ensureForClaimRating($this->claimRating);
-        $this->claimRating->refresh();
+        DB::transaction(function () use ($syntheticUser): void {
+            // Match the editor's user-before-rating order. Allocation, if
+            // needed, has already completed before either row is locked.
+            $user = SyntheticRatingUser::query()->lockForUpdate()->findOrFail($syntheticUser->id);
+            $rating = ClaimRating::query()->lockForUpdate()->findOrFail($this->claimRating->id);
+            $this->claimRating = $rating;
+            if ($rating->executed_at || $rating->isRetracted()) {
+                return;
+            }
+            if ((int) $rating->synthetic_rating_user_id !== (int) $user->id) {
+                throw new \RuntimeException('The synthetic user assignment changed before generation.');
+            }
 
-        $data = $this->claimRating->data ?? [];
-        $data['planning']['synthetic_user_profile'] = $syntheticUser->fresh()->publicProfile();
-
-        $this->claimRating->forceFill([
-            'synthetic_rating_user_id' => $syntheticUser->id,
-            'data' => $data,
-        ])->saveQuietly();
-
-        $this->claimRating->refresh();
+            $data = $rating->data ?? [];
+            $data['planning']['synthetic_user_profile'] = $user->publicProfile();
+            $rating->forceFill(['data' => $data])->saveQuietly();
+            $rating->setRelation('syntheticUser', $user);
+        }, 3);
     }
 
     private function generationPrompt(): string
@@ -359,7 +389,6 @@ TEXT;
         ];
     }
 
-
     /**
      * @return array<string, mixed>
      */
@@ -424,7 +453,7 @@ TEXT;
     }
 
     /**
-     * @param array<string, mixed> $settings
+     * @param  array<string, mixed>  $settings
      */
     private function weightedRegulationType(array $settings): string
     {
@@ -455,7 +484,7 @@ TEXT;
     }
 
     /**
-     * @param array<string, mixed> $settings
+     * @param  array<string, mixed>  $settings
      */
     private function realisticDurationDays(int $averageDays, array $settings): int
     {
@@ -478,7 +507,7 @@ TEXT;
     }
 
     /**
-     * @param array<string, mixed> $mix
+     * @param  array<string, mixed>  $mix
      */
     private function weightedDurationBucket(array $mix): string
     {

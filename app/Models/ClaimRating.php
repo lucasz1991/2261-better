@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -104,36 +105,151 @@ class ClaimRating extends Model
 
     public function scopeSearch(Builder $query, ?string $search): Builder
     {
-        $search = trim((string) $search);
+        $search = mb_substr(trim((string) $search), 0, 200);
+        $search = str_starts_with($search, '@') ? substr($search, 1) : $search;
 
         if ($search === '') {
             return $query;
         }
 
-        return $query->where(function (Builder $query) use ($search) {
-            $query
-                ->where('moderator_comment', 'like', '%'.$search.'%')
-                ->orWhere('last_execution_error', 'like', '%'.$search.'%')
-                ->orWhere('status', 'like', '%'.$search.'%')
-                ->orWhere('data->base_context->insurance->name', 'like', '%'.$search.'%');
+        $like = '%'.$search.'%';
+        $tokens = array_slice(preg_split('/\s+/u', $search, -1, PREG_SPLIT_NO_EMPTY) ?: [], 0, 4);
 
-            if (is_numeric($search)) {
-                $query
-                    ->orWhere('id', (int) $search)
-                    ->orWhere('base_claim_rating_id', (int) $search)
-                    ->orWhere('base_user_id', (int) $search)
-                    ->orWhere('synthetic_rating_user_id', (int) $search)
-                    ->orWhere('insurance_id', (int) $search)
-                    ->orWhere('insurance_type_id', (int) $search)
-                    ->orWhere('insurance_subtype_id', (int) $search);
+        return $query->where(function (Builder $query) use ($search, $like, $tokens): void {
+            $query->where('moderator_comment', 'like', $like)
+                ->orWhere('last_execution_error', 'like', $like)
+                ->orWhere('status', 'like', $like)
+                ->orWhere('answers', 'like', $like)
+                ->orWhere('attachments->scorings->ai_overall_comment', 'like', $like);
+
+            foreach (['insurance', 'insurance_type', 'insurance_subtype'] as $context) {
+                $query->orWhere('data->base_context->'.$context.'->name', 'like', $like);
             }
 
-            $query->orWhereHas('syntheticUser', function (Builder $query) use ($search): void {
-                $query
-                    ->where('name', 'like', '%'.$search.'%')
-                    ->orWhere('email', 'like', '%'.$search.'%');
+            // Profiles may exist before a local user is materialized.
+            foreach (['name', 'username', 'first_name', 'last_name', 'display_name', 'email', 'persona->display_name'] as $field) {
+                $query->orWhere('data->planning->synthetic_user_profile->'.$field, 'like', $like);
+            }
+
+            if (ctype_digit($search) && strlen($search) <= 18) {
+                foreach (['id', 'base_claim_rating_id', 'base_user_id', 'synthetic_rating_user_id', 'insurance_id', 'insurance_type_id', 'insurance_subtype_id'] as $field) {
+                    $query->orWhere($field, (int) $search);
+                }
+            }
+
+            $query->orWhereHas('syntheticUser', function (Builder $users) use ($like, $tokens): void {
+                $users->where(function (Builder $names) use ($like, $tokens): void {
+                    foreach (['name', 'username', 'first_name', 'last_name', 'email'] as $field) {
+                        $names->orWhere($field, 'like', $like);
+                    }
+
+                    if (count($tokens) > 1) {
+                        $names->orWhere(function (Builder $fullName) use ($tokens): void {
+                            foreach ($tokens as $token) {
+                                $fullName->where(function (Builder $part) use ($token): void {
+                                    $part->where('first_name', 'like', '%'.$token.'%')
+                                        ->orWhere('last_name', 'like', '%'.$token.'%');
+                                });
+                            }
+                        });
+                    }
+                });
             });
         });
+    }
+
+    public function scopeAdminFilters(Builder $query, array $filters): Builder
+    {
+        if (filled($filters['status'] ?? null)) {
+            $query->where('status', $filters['status']);
+        }
+
+        $dateField = in_array($filters['date_field'] ?? '', ['created_at', 'scheduled_for', 'executed_at', 'updated_at'], true)
+            ? $filters['date_field'] : 'created_at';
+        $timezone = config('app.timezone', 'Europe/Berlin');
+        foreach (['date_from' => '>=', 'date_to' => '<'] as $key => $operator) {
+            if (filled($filters[$key] ?? null)) {
+                $date = CarbonImmutable::createFromFormat('!Y-m-d', $filters[$key], $timezone);
+                $query->where($dateField, $operator, $key === 'date_to' ? $date->addDay() : $date);
+            }
+        }
+
+        foreach (['insurance_id', 'insurance_type_id', 'insurance_subtype_id'] as $field) {
+            if (filled($filters[$field] ?? null)) {
+                $query->where($field, (int) $filters[$field]);
+            }
+        }
+
+        foreach (['score_min' => '>=', 'score_max' => '<='] as $field => $operator) {
+            if (isset($filters[$field]) && $filters[$field] !== '') {
+                $query->where('rating_score', $operator, (float) $filters[$field]);
+            }
+        }
+
+        if (in_array($filters['visibility'] ?? '', ['public', 'private'], true)) {
+            $query->where('is_public', $filters['visibility'] === 'public');
+        }
+
+        if (($filters['base_link'] ?? '') === 'linked') {
+            $query->whereNotNull('base_claim_rating_id');
+        } elseif (($filters['base_link'] ?? '') === 'unlinked') {
+            $query->whereNull('base_claim_rating_id');
+        }
+
+        $userManual = fn (Builder $users) => $users->whereNotNull('data->manual_edit->edited_at');
+        if (($filters['manual'] ?? '') === 'yes') {
+            $query->where(fn (Builder $edited) => $edited->whereNotNull('data->manual_edit->edited_at')
+                ->orWhereHas('syntheticUser', $userManual));
+        } elseif (($filters['manual'] ?? '') === 'no') {
+            $query->whereNull('data->manual_edit->edited_at')->whereDoesntHave('syntheticUser', $userManual);
+        }
+
+        if (($filters['generator'] ?? '') === '6') {
+            $query->whereHas('syntheticUser', fn (Builder $users) => $users->where('data->username_generation->generator_version', 6));
+        } elseif (($filters['generator'] ?? '') === 'legacy') {
+            $query->whereDoesntHave('syntheticUser', fn (Builder $users) => $users->where('data->username_generation->generator_version', '>=', 6));
+        }
+
+        return $query->effectiveEditSync($filters['sync'] ?? '');
+    }
+
+    /**
+     * Keep the rating and shared-user revision states independent. A user edit
+     * affects every linked rating, so actionable user states take precedence.
+     */
+    public function scopeEffectiveEditSync(Builder $query, string $state): Builder
+    {
+        $priority = ['conflict', 'failed', 'pending', 'local'];
+        $position = array_search($state, $priority, true);
+        $excluded = $position !== false ? array_slice($priority, 0, $position) : $priority;
+
+        if (! in_array($state, [...$priority, 'unknown', 'synced'], true)) {
+            return $query;
+        }
+
+        if ($excluded !== []) {
+            $query->where(fn (Builder $rating) => $rating->whereNull('data->edit_sync->status')
+                ->orWhereNotIn('data->edit_sync->status', $excluded))
+                ->whereDoesntHave('syntheticUser', fn (Builder $user) => $user->whereIn('data->edit_sync->status', $excluded));
+        }
+
+        if ($position !== false) {
+            return $query->where(fn (Builder $rating) => $rating->where('data->edit_sync->status', $state)
+                ->orWhereHas('syntheticUser', fn (Builder $user) => $user->where('data->edit_sync->status', $state)));
+        }
+
+        if ($state === 'synced') {
+            return $query->where('data->edit_sync->status', 'synced')
+                ->where(fn (Builder $rating) => $rating->whereDoesntHave('syntheticUser')
+                    ->orWhereHas('syntheticUser', fn (Builder $user) => $user->where('data->edit_sync->status', 'synced')));
+        }
+
+        $known = [...$priority, 'synced'];
+        $unknown = fn (Builder $row) => $row->whereNull('data->edit_sync->status')
+            ->orWhereNotIn('data->edit_sync->status', $known);
+
+        return $query->where(fn (Builder $rating) => $rating->where($unknown)
+            ->orWhereHas('syntheticUser', fn (Builder $user) => $user->where($unknown)));
     }
 
     public function scopePlanned(Builder $query): Builder

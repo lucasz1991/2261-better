@@ -46,7 +46,7 @@ class ReplanSyntheticClaimRatings
         $cutoff = CarbonImmutable::now();
         $batchId = (string) Str::uuid();
 
-        $report = DB::transaction(function () use ($requestedIds, $cutoff, $batchId, $report): array {
+        $report = app(UsernameAllocator::class)->transaction(function () use ($requestedIds, $cutoff, $batchId, $report): array {
             $ratings = ClaimRating::query()
                 ->with('syntheticUser')
                 ->whereKey($requestedIds)
