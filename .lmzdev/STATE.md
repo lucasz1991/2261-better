@@ -1,5 +1,14 @@
 # Current state
 
+## Unified ratings UI - 2026-11-16
+
+- Executed and planned ratings now use the same compact filter toolbar, shared user identity partial and reusable `Admin/RatingNameQuality` Livewire child. Headers are minimal; extended filters and username checks open as dropdowns, with contained panels on mobile.
+- Removed the separate users/name-quality sidebar item. Existing `/administrator/review-users` links redirect to the ratings list.
+- Name checks are requested on demand and cached. Core, exact-name, near-spelling, family and unknown-base filters apply before pagination/selection. Child-to-parent filter events explicitly reset page and selection; edited usernames refresh an open panel.
+- Planned list keeps scheduling, selection, replacement and editing actions; AI settings are collapsed. User identity is the first content column in both lists. Search, sorting, active chips, per-page controls and sync details remain available.
+- Verified: full PHPUnit suite 45 tests / 14,019 assertions; seven changed Blade views compiled; Vite build and diff check passed. Browser checks on isolated SQLite covered both lists, core/similar filtering, selection reset, search, editor access, preview start/stop, desktop and 390px mobile layout; no browser console errors. Preview sample: 350 new names / 350 cores / no failures before deliberately stopping.
+- No real users or ratings modified. Regular local MySQL activation/migrations remain pending as documented below.
+
 ## Activation recheck - 2026-11-16
 
 - Username generator v6 verified in source: 33,692 canonical cores, 457 families, 12 themes. Username metadata version is 6; persona identity_version remains 5.

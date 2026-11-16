@@ -1,7 +1,7 @@
-<div class="w-full min-w-0 max-w-none space-y-4">
+<div class="rating-workspace w-full min-w-0">
     @php
         $nextScheduledFor = $stats['next_scheduled_for'] ?? null;
-        $nextScheduledLabel = $nextScheduledFor ? $nextScheduledFor->format('d.m.Y H:i') : 'Kein Lauf geplant';
+        $nextScheduledLabel = $nextScheduledFor ? $nextScheduledFor->format('d.m.Y · H:i') : 'Kein Lauf geplant';
         $selectedRatingLookup = collect($selectedRatingIds)
             ->filter(fn ($id) => is_int($id) || (is_string($id) && ctype_digit($id)))
             ->mapWithKeys(fn ($id) => [(string) $id => true])
@@ -10,513 +10,218 @@
         $replannableCount = (int) ($stats['replannable'] ?? 0);
     @endphp
 
-    @php
-        $kpis = [
-            ['label' => 'Gesamt', 'value' => $stats['total'], 'icon' => 'fa-layer-group', 'tone' => 'bg-slate-100 text-slate-700'],
-            ['label' => 'Faellig', 'value' => $stats['due'], 'icon' => 'fa-hourglass-end', 'tone' => 'bg-amber-50 text-amber-700'],
-            ['label' => 'Anstehend', 'value' => $stats['upcoming'], 'icon' => 'fa-calendar-day', 'tone' => 'bg-blue-50 text-blue-700'],
-            ['label' => 'Ausgefuehrt', 'value' => $stats['executed'], 'icon' => 'fa-database', 'tone' => 'bg-emerald-50 text-emerald-700'],
-            ['label' => 'Zurueckgerufen', 'value' => $stats['retracted'], 'icon' => 'fa-rotate-left', 'tone' => 'bg-slate-100 text-slate-700'],
-            ['label' => 'Fehler', 'value' => $stats['failed'], 'icon' => 'fa-triangle-exclamation', 'tone' => 'bg-rose-50 text-rose-700'],
-        ];
-    @endphp
-
-    <section class="w-full min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-        <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <div class="flex min-w-0 items-center gap-3">
-                <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
-                    <i class="fal fa-calendar-check"></i>
-                </span>
-                <div class="min-w-0">
-                    <div class="flex flex-wrap items-center gap-2">
-                        <h1 class="text-xl font-semibold tracking-tight text-slate-950">Geplante Bewertungen</h1>
-                        <span class="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                            <i class="fal fa-table-list"></i>
-                            {{ $ratings->total() }} Eintraege
-                        </span>
-                    </div>
-                    <p class="mt-0.5 truncate text-sm text-slate-500">Zeitplan, AI-Vorbereitung, Score und Base-Ausfuehrung.</p>
-                </div>
-            </div>
-
-            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-                <div class="inline-flex min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                    <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white text-blue-700">
-                        <i class="fal fa-clock"></i>
-                    </span>
-                    <div class="min-w-0">
-                        <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Naechster Lauf</div>
-                        <div class="truncate text-sm font-semibold text-slate-950">{{ $nextScheduledLabel }}</div>
-                    </div>
-                </div>
-
-                <button
-                    type="button"
-                    wire:click="clearFilters"
-                    class="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                >
-                    <i class="fal fa-filter-circle-xmark"></i>
-                    Filter zuruecksetzen
-                </button>
-            </div>
+    <header class="rating-page-header">
+        <div class="flex min-w-0 flex-wrap items-center gap-2.5">
+            <h1 class="text-xl font-semibold tracking-tight text-slate-900">Geplante Bewertungen</h1>
+            <span class="text-xs tabular-nums text-slate-500">{{ number_format($ratings->total(), 0, ',', '.') }} Einträge</span>
         </div>
-
-        <div class="mt-3 grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
-            @foreach($kpis as $kpi)
-                <div class="min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2">
-                    <div class="flex items-center justify-between gap-2">
-                        <div class="min-w-0">
-                            <div class="truncate text-[11px] font-semibold uppercase tracking-wide text-slate-500">{{ $kpi['label'] }}</div>
-                            <div class="mt-1 text-xl font-semibold leading-none text-slate-950">{{ $kpi['value'] }}</div>
-                        </div>
-                        <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md {{ $kpi['tone'] }}">
-                            <i class="fal {{ $kpi['icon'] }}"></i>
-                        </span>
-                    </div>
-                </div>
-            @endforeach
-        </div>
-    </section>
-
-    @if (session('success'))
-        <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
-            <i class="fal fa-check-circle mr-2"></i>{{ session('success') }}
-        </div>
-    @endif
-
-    @if (session('error'))
-        <div class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">
-            <i class="fal fa-exclamation-circle mr-2"></i>{{ session('error') }}
-        </div>
-    @endif
-
-
-    <section class="w-full min-w-0 rounded-xl border border-blue-200 bg-white p-3 shadow-sm">
-        <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div class="min-w-0">
-                <div class="flex flex-wrap items-center gap-2">
-                    <span class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
-                        <i class="fal fa-sliders"></i>
-                    </span>
-                    <div>
-                        <h2 class="text-base font-semibold text-slate-950">AI-Variationen</h2>
-                        <p class="mt-0.5 text-xs text-slate-500">Steuert neue AI-Vorbereitungen: Regulierungstypen, realistische Mindestdauer und kurz/normal/lang-Mix.</p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800 lg:max-w-md">
-                <i class="fal fa-info-circle mr-1"></i>
-                Bereits vorbereitete Bewertungen werden nicht automatisch geaendert. Klicke bei bestehenden Eintraegen auf <strong>AI neu</strong>, damit die neuen Werte greifen.
-            </div>
-        </div>
-
-        <form wire:submit.prevent="saveAiVariationSettings" class="mt-4 grid gap-4 xl:grid-cols-3">
-            <div class="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+        <div class="flex flex-wrap items-center gap-3">
+            <span class="text-xs text-slate-500">Nächster Lauf <strong class="ml-1 font-medium tabular-nums text-slate-700">{{ $nextScheduledLabel }}</strong></span>
+            <details class="relative" wire:ignore.self wire:key="planned-ai-settings" x-data x-on:click.outside="$el.open = false" x-on:keydown.escape.prevent.stop="$el.open = false">
+                <summary class="rating-button cursor-pointer">AI-Einstellungen</summary>
+                <div class="rating-ai-panel rating-shell absolute right-0 z-30 mt-2 max-h-[70vh] w-[min(92vw,980px)] overflow-y-auto p-1">
+        <h2 class="px-4 py-3 text-sm font-semibold text-slate-800">AI-Einstellungen</h2>
+        <p class="px-4 pb-4 text-xs leading-5 text-slate-500">Änderungen gelten für neue Vorbereitungen. Bereits vorbereitete Bewertungen können über „AI neu“ mit den neuen Einstellungen erzeugt werden.</p>
+        <form wire:submit.prevent="saveAiVariationSettings" class="grid gap-4 border-t border-slate-100 p-4 xl:grid-cols-3">
+            <div class="rounded-lg bg-slate-50 p-4">
                 <h3 class="text-sm font-semibold text-slate-900">Regulierungsdauer</h3>
                 <div class="mt-3 grid gap-3 sm:grid-cols-2">
                     <label class="block text-xs font-medium text-slate-600">
                         Mindestdauer Tage
-                        <input type="number" min="7" max="90" wire:model.defer="aiVariationSettings.min_duration_days" class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <input type="number" min="7" max="90" wire:model.defer="aiVariationSettings.min_duration_days" class="mt-1 block w-full rounded-md border-slate-300 text-sm focus:border-blue-500 focus:ring-blue-500">
                     </label>
                     <label class="block text-xs font-medium text-slate-600">
                         Maximaldauer Tage
-                        <input type="number" min="21" max="365" wire:model.defer="aiVariationSettings.max_duration_days" class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <input type="number" min="21" max="365" wire:model.defer="aiVariationSettings.max_duration_days" class="mt-1 block w-full rounded-md border-slate-300 text-sm focus:border-blue-500 focus:ring-blue-500">
                     </label>
                     <label class="block text-xs font-medium text-slate-600">
                         Abschluss mind. vor Termin
-                        <input type="number" min="0" max="30" wire:model.defer="aiVariationSettings.closed_ended_min_offset_days" class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <input type="number" min="0" max="30" wire:model.defer="aiVariationSettings.closed_ended_min_offset_days" class="mt-1 block w-full rounded-md border-slate-300 text-sm focus:border-blue-500 focus:ring-blue-500">
                     </label>
                     <label class="block text-xs font-medium text-slate-600">
                         Abschluss max. vor Termin
-                        <input type="number" min="1" max="120" wire:model.defer="aiVariationSettings.closed_ended_max_offset_days" class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <input type="number" min="1" max="120" wire:model.defer="aiVariationSettings.closed_ended_max_offset_days" class="mt-1 block w-full rounded-md border-slate-300 text-sm focus:border-blue-500 focus:ring-blue-500">
                     </label>
                 </div>
             </div>
 
-            <div class="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+            <div class="rounded-lg bg-slate-50 p-4">
                 <h3 class="text-sm font-semibold text-slate-900">Dauer-Mix Gewichtung</h3>
-                <p class="mt-1 text-xs text-slate-500">Gewichte muessen nicht exakt 100 ergeben; sie werden relativ genutzt.</p>
+                <p class="mt-1 text-xs text-slate-500">Gewichte müssen nicht exakt 100 ergeben; sie werden relativ genutzt.</p>
                 <div class="mt-3 grid gap-3 sm:grid-cols-3">
                     <label class="block text-xs font-medium text-slate-600">
                         Kurz
-                        <input type="number" min="0" max="100" wire:model.defer="aiVariationSettings.duration_mix.short" class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <input type="number" min="0" max="100" wire:model.defer="aiVariationSettings.duration_mix.short" class="mt-1 block w-full rounded-md border-slate-300 text-sm focus:border-blue-500 focus:ring-blue-500">
                     </label>
                     <label class="block text-xs font-medium text-slate-600">
                         Normal
-                        <input type="number" min="0" max="100" wire:model.defer="aiVariationSettings.duration_mix.normal" class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <input type="number" min="0" max="100" wire:model.defer="aiVariationSettings.duration_mix.normal" class="mt-1 block w-full rounded-md border-slate-300 text-sm focus:border-blue-500 focus:ring-blue-500">
                     </label>
                     <label class="block text-xs font-medium text-slate-600">
                         Lang
-                        <input type="number" min="0" max="100" wire:model.defer="aiVariationSettings.duration_mix.long" class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <input type="number" min="0" max="100" wire:model.defer="aiVariationSettings.duration_mix.long" class="mt-1 block w-full rounded-md border-slate-300 text-sm focus:border-blue-500 focus:ring-blue-500">
                     </label>
                 </div>
             </div>
 
-            <div class="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+            <div class="rounded-lg bg-slate-50 p-4">
                 <h3 class="text-sm font-semibold text-slate-900">Regulierungsarten</h3>
-                <p class="mt-1 text-xs text-slate-500">Gewichtete Verteilung plus optionales Uebersteuern der AI-Antwort.</p>
+                <p class="mt-1 text-xs text-slate-500">Gewichtete Verteilung plus optionales Übersteuern der AI-Antwort.</p>
                 <div class="mt-3 grid gap-3 sm:grid-cols-5 xl:grid-cols-2">
                     <label class="block text-xs font-medium text-slate-600">
                         Vollzahlung
-                        <input type="number" min="0" max="100" wire:model.defer="aiVariationSettings.regulation_type_weights.vollzahlung" class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <input type="number" min="0" max="100" wire:model.defer="aiVariationSettings.regulation_type_weights.vollzahlung" class="mt-1 block w-full rounded-md border-slate-300 text-sm focus:border-blue-500 focus:ring-blue-500">
                     </label>
                     <label class="block text-xs font-medium text-slate-600">
                         Teilzahlung
-                        <input type="number" min="0" max="100" wire:model.defer="aiVariationSettings.regulation_type_weights.teilzahlung" class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <input type="number" min="0" max="100" wire:model.defer="aiVariationSettings.regulation_type_weights.teilzahlung" class="mt-1 block w-full rounded-md border-slate-300 text-sm focus:border-blue-500 focus:ring-blue-500">
                     </label>
                     <label class="block text-xs font-medium text-slate-600">
                         Ablehnung
-                        <input type="number" min="0" max="100" wire:model.defer="aiVariationSettings.regulation_type_weights.ablehnung" class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <input type="number" min="0" max="100" wire:model.defer="aiVariationSettings.regulation_type_weights.ablehnung" class="mt-1 block w-full rounded-md border-slate-300 text-sm focus:border-blue-500 focus:ring-blue-500">
                     </label>
                     <label class="block text-xs font-medium text-slate-600">
                         Ausstehend
-                        <input type="number" min="0" max="100" wire:model.defer="aiVariationSettings.regulation_type_weights.austehend" class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <input type="number" min="0" max="100" wire:model.defer="aiVariationSettings.regulation_type_weights.austehend" class="mt-1 block w-full rounded-md border-slate-300 text-sm focus:border-blue-500 focus:ring-blue-500">
                     </label>
                     <label class="block text-xs font-medium text-slate-600 sm:col-span-5 xl:col-span-2">
-                        AI-Uebersteuerung %
-                        <input type="number" min="0" max="100" wire:model.defer="aiVariationSettings.regulation_ai_override_percent" class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        AI-Übersteuerung %
+                        <input type="number" min="0" max="100" wire:model.defer="aiVariationSettings.regulation_ai_override_percent" class="mt-1 block w-full rounded-md border-slate-300 text-sm focus:border-blue-500 focus:ring-blue-500">
                     </label>
                 </div>
             </div>
 
             <div class="flex flex-wrap items-center justify-end gap-2 xl:col-span-3">
-                <button type="button" wire:click="resetAiVariationSettings" wire:confirm="AI-Variationen wirklich auf Standardwerte zuruecksetzen?" class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50">
-                    <i class="fal fa-rotate-left"></i>
+                <button type="button" wire:click="resetAiVariationSettings" wire:confirm="AI-Variationen wirklich auf Standardwerte zurücksetzen?" class="rating-button">
+                    <i class="fal fa-undo"></i>
                     Standards
                 </button>
-                <button type="submit" class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-blue-500">
+                <button type="submit" class="rating-button rating-button-primary">
                     <i class="fal fa-save"></i>
                     Variationen speichern
                 </button>
             </div>
         </form>
-    </section>
-
-    <section class="w-full min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div class="border-b border-slate-200 bg-slate-50/80 px-3 py-3 sm:px-4">
-            <div class="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(300px,460px)] lg:items-center">
-                <div class="min-w-0">
-                    <div class="flex flex-wrap items-center gap-2">
-                        <h2 class="text-base font-semibold text-slate-950">Bewertungslaeufe</h2>
-                        <span class="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600">
-                            <i class="fal fa-table-list"></i>
-                            {{ $ratings->total() }} Eintraege
-                        </span>
-                    </div>
-                    <p class="mt-0.5 text-xs text-slate-500">Zeile anklicken, um Antworten, Konfiguration und Benutzerdaten zu oeffnen.</p>
                 </div>
+            </details>
+        </div>
+    </header>
 
+    @if(session('success'))
+        <div role="status" class="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{{ session('success') }}</div>
+    @endif
+    @if(session('error'))
+        <div role="alert" class="rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-800">{{ session('error') }}</div>
+    @endif
+
+
+
+    @include('livewire.admin.partials.claim-rating-filters')
+
+    <section class="rating-shell min-w-0 overflow-hidden" aria-label="Geplante Bewertungen">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/60 px-4 py-3">
+            <div class="flex items-center gap-2 text-sm">
+                <strong class="font-semibold tabular-nums text-slate-800">{{ $selectedRatingCount }}</strong>
+                <span class="text-slate-500">ausgewählt</span>
+                <details class="relative text-xs text-slate-500" wire:ignore.self wire:key="planned-selection-help" x-data x-on:click.outside="$el.open = false" x-on:keydown.escape.prevent.stop="$el.open = false">
+                    <summary class="cursor-pointer rounded px-2 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">Hinweise</summary>
+                    <p class="rating-shell absolute left-0 z-20 mt-2 w-64 p-3 text-xs leading-5">Ausgewählt werden nur zukünftige, noch nicht gestartete Treffer der aktiven Filter. Ein Filterwechsel leert die Auswahl. Die Neuplanung ersetzt die gewählten Bewertungen und ihre eigenen Base-Verknüpfungen; Anzahl und Kalendertag bleiben erhalten.</p>
+                </details>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+                <button type="button" wire:click="selectCurrentPage" wire:loading.attr="disabled" class="rating-button" aria-label="Diese Seite auswählen">Seite auswählen</button>
+                <button type="button" wire:click="selectAllUpcoming" wire:loading.attr="disabled" wire:target="selectAllUpcoming,replanSelected" @disabled($replannableCount === 0) class="rating-button" aria-label="Alle {{ $replannableCount }} neu planbaren Treffer">Alle {{ $replannableCount }} Treffer</button>
+                @if($selectedRatingCount > 0)
+                <button type="button" wire:click="clearRatingSelection" @disabled($selectedRatingCount === 0) class="rating-button">Auswahl leeren</button>
+                <button type="button" wire:click="replanSelected"
+                    wire:confirm="{{ $selectedRatingCount }} ausgewählte bevorstehende Bewertung(en) wirklich verwerfen und vollständig neu planen? Vorhandene synthetische Base-Verknüpfungen werden gelöscht und beim Ersatz neu erstellt. Bereits ausgeführte oder inzwischen gestartete Einträge bleiben unverändert."
+                    wire:loading.attr="disabled" wire:target="replanSelected" @disabled($selectedRatingCount === 0) class="rating-button rating-button-primary">
+                    <span wire:loading.remove wire:target="replanSelected">Auswahl neu planen</span><span wire:loading wire:target="replanSelected">Wird neu geplant…</span>
+                </button>
+                @endif
             </div>
         </div>
-
-        <div class="p-3 sm:p-4">
-            @include('livewire.admin.partials.claim-rating-filters')
-        </div>
-
-        <div class="border-b border-slate-200 bg-blue-50/60 px-3 py-3 sm:px-4">
-            <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                <div class="min-w-0">
-                    <div class="flex flex-wrap items-center gap-2">
-                        <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
-                            <i class="fal fa-shuffle"></i>
-                        </span>
-                        <div>
-                            <div class="flex flex-wrap items-center gap-2">
-                                <h3 class="text-sm font-semibold text-slate-950">Bevorstehende Planung ersetzen</h3>
-                                <span class="inline-flex items-center rounded-full border border-blue-200 bg-white px-2.5 py-0.5 text-xs font-semibold text-blue-700">
-                                    {{ $selectedRatingCount }} ausgewaehlt
-                                </span>
-                            </div>
-                            <p class="mt-0.5 text-xs leading-5 text-slate-600">
-                                Die Auswahl berücksichtigt alle aktiven Filter. Ein Filterwechsel leert die Auswahl. Nur zukünftige, noch nicht gestartete Einträge sind wählbar. Eigene Base-Verknuepfungen werden entfernt und beim neuen Lauf neu erstellt; Anzahl und Kalendertag bleiben erhalten.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="flex flex-wrap items-center gap-2 xl:justify-end">
-                    <button type="button" wire:click="selectCurrentPage" wire:loading.attr="disabled"
-                        class="inline-flex items-center justify-center rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50">
-                        Diese Seite auswählen
-                    </button>
-                    <button
-                        type="button"
-                        wire:click="selectAllUpcoming"
-                        wire:loading.attr="disabled"
-                        wire:target="selectAllUpcoming,replanSelected"
-                        @disabled($replannableCount === 0)
-                        class="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                        <i class="fal fa-check-double"></i>
-                        Alle {{ $replannableCount }} neu planbaren Treffer auswählen
-                    </button>
-
-                    <button
-                        type="button"
-                        wire:click="clearRatingSelection"
-                        @disabled($selectedRatingCount === 0)
-                        class="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                        <i class="fal fa-xmark"></i>
-                        Auswahl leeren
-                    </button>
-
-                    <button
-                        type="button"
-                        wire:click="replanSelected"
-                        wire:confirm="{{ $selectedRatingCount }} ausgewaehlte bevorstehende Bewertung(en) wirklich verwerfen und vollstaendig neu planen? Vorhandene synthetische Base-Verknuepfungen werden geloescht und beim Ersatz neu erstellt. Bereits ausgefuehrte oder inzwischen gestartete Eintraege bleiben unveraendert."
-                        wire:loading.attr="disabled"
-                        wire:target="replanSelected"
-                        @disabled($selectedRatingCount === 0)
-                        class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                        <i class="fal fa-shuffle" wire:loading.remove wire:target="replanSelected"></i>
-                        <i class="fal fa-spinner fa-spin" wire:loading wire:target="replanSelected"></i>
-                        <span wire:loading.remove wire:target="replanSelected">Auswahl neu planen</span>
-                        <span wire:loading wire:target="replanSelected">Plant neu...</span>
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <div class="overflow-x-auto">
-            <table class="w-full min-w-[1180px] divide-y divide-slate-200 text-sm">
-                <thead class="bg-white text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <div class="max-w-full overflow-x-auto" role="region" aria-label="Tabelle der geplanten Bewertungen" tabindex="0">
+            <table class="rating-table w-full min-w-[1060px] text-left text-sm">
+                <thead>
                     <tr>
-                        <th class="w-14 px-4 py-3 text-center">
-                            <span class="sr-only">Neuplanung auswaehlen</span>
-                            <i class="fal fa-square-check" aria-hidden="true"></i>
-                        </th>
-                        <th class="px-4 py-3">
-                            <button type="button" wire:click="sortBy('id')" class="inline-flex items-center gap-1 font-semibold hover:text-slate-900">
-                                Lauf <i class="fal fa-sort text-[10px]"></i>
-                            </button>
-                        </th>
-                        <th class="px-4 py-3">
-                            <button type="button" wire:click="sortBy('scheduled_for')" class="inline-flex items-center gap-1 font-semibold hover:text-slate-900">
-                                Termin <i class="fal fa-sort text-[10px]"></i>
-                            </button>
-                        </th>
-                        <th class="px-4 py-3"><div class="flex gap-2"><button type="button" wire:click="sortBy('name')" class="font-semibold">Name</button><span aria-hidden="true">/</span><button type="button" wire:click="sortBy('username')" class="font-semibold">Benutzername</button></div><span class="text-[10px] font-normal">Versicherungskontext</span></th>
-                        <th class="px-4 py-3">
-                            <button type="button" wire:click="sortBy('rating_score')" class="inline-flex items-center gap-1 font-semibold hover:text-slate-900">
-                                AI / Score <i class="fal fa-sort text-[10px]"></i>
-                            </button>
-                        </th>
-                        <th class="px-4 py-3">Status</th>
-                        <th class="px-4 py-3">
-                            <button type="button" wire:click="sortBy('base_claim_rating_id')" class="inline-flex items-center gap-1 font-semibold hover:text-slate-900">
-                                Base <i class="fal fa-sort text-[10px]"></i>
-                            </button>
-                        </th>
-                        <th class="px-4 py-3 text-right">Aktionen</th>
+                        <th class="w-12 text-center"><span class="sr-only">Für Neuplanung auswählen</span></th>
+                        <th><div class="flex items-center gap-2"><button type="button" wire:click="sortBy('name')">Benutzer</button><button type="button" wire:click="sortBy('username')" title="Nach Benutzername sortieren" aria-label="Nach Benutzername sortieren" class="text-slate-400">@ <span aria-hidden="true">↕</span></button></div></th>
+                        <th><div class="flex items-center gap-2"><button type="button" wire:click="sortBy('id')" class="inline-flex items-center gap-1">Bewertung <span aria-hidden="true">{{ $sortField === 'id' ? ($sortDirection === 'asc' ? '↑' : '↓') : '↕' }}</span></button><button type="button" wire:click="sortBy('base_claim_rating_id')" class="text-xs text-slate-400" title="Nach Base-ID sortieren">Base</button></div></th>
+                        <th><button type="button" wire:click="sortBy('scheduled_for')" class="inline-flex items-center gap-1">Termin <span aria-hidden="true">{{ $sortField === 'scheduled_for' ? ($sortDirection === 'asc' ? '↑' : '↓') : '↕' }}</span></button></th>
+                        <th><button type="button" wire:click="sortBy('rating_score')" class="inline-flex items-center gap-1">Score <span aria-hidden="true">{{ $sortField === 'rating_score' ? ($sortDirection === 'asc' ? '↑' : '↓') : '↕' }}</span></button></th>
+                        <th>Status &amp; Übertragung</th>
+                        <th class="text-right">Aktionen</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-100 bg-white">
+                <tbody>
                     @forelse($ratings as $rating)
                         @php
                             $state = $rating->execution_state_label;
-                            $stateClasses = match ($state) {
-                                'Ausgefuehrt' => 'border-emerald-200 bg-emerald-50 text-emerald-700',
-                                'Fehler' => 'border-rose-200 bg-rose-50 text-rose-700',
-                                'Faellig' => 'border-amber-200 bg-amber-50 text-amber-700',
-                                'Laeuft' => 'border-blue-200 bg-blue-50 text-blue-700',
-                                'AI vorbereitet' => 'border-cyan-200 bg-cyan-50 text-cyan-700',
-                                'Zurueckgerufen' => 'border-slate-300 bg-slate-100 text-slate-700',
-                                default => 'border-slate-200 bg-slate-50 text-slate-700',
-                            };
-                            $stateIcon = match ($state) {
-                                'Ausgefuehrt' => 'fa-check',
-                                'Fehler' => 'fa-triangle-exclamation',
-                                'Faellig' => 'fa-hourglass-end',
-                                'Laeuft' => 'fa-spinner fa-spin',
-                                'AI vorbereitet' => 'fa-wand-magic-sparkles',
-                                'Zurueckgerufen' => 'fa-rotate-left',
-                                default => 'fa-calendar',
-                            };
                             $isPrepared = filled(data_get($rating->data, 'ai_generation.generated_at'));
-                            $preparedAt = data_get($rating->data, 'ai_generation.generated_at');
-                            $insuranceName = data_get($rating->data, 'base_context.insurance.name') ?: 'Versicherung #' . ($rating->insurance_id ?? '-');
-                            $typeName = data_get($rating->data, 'base_context.insurance_type.name') ?: 'Typ #' . ($rating->insurance_type_id ?? '-');
-                            $subtypeName = data_get($rating->data, 'base_context.insurance_subtype.name') ?: 'Untertyp #' . ($rating->insurance_subtype_id ?? '-');
+                            $insuranceName = data_get($rating->data, 'base_context.insurance.name') ?: 'Versicherung #' . ($rating->insurance_id ?? '–');
+                            $typeName = data_get($rating->data, 'base_context.insurance_type.name') ?: 'Typ #' . ($rating->insurance_type_id ?? '–');
+                            $subtypeName = data_get($rating->data, 'base_context.insurance_subtype.name') ?: 'Untertyp #' . ($rating->insurance_subtype_id ?? '–');
                             $displayTime = $rating->executed_at ?: $rating->scheduled_for;
                             $isRetracted = $rating->isRetracted();
-                            $timeLabel = $isRetracted ? 'Zurueckgerufen' : ($rating->executed_at ? 'Ausgefuehrt' : 'Geplant');
-                            $isDue = ! $isRetracted && ! $rating->executed_at && $rating->scheduled_for && $rating->scheduled_for->lte(now());
-                            $timeTone = $isRetracted
-                                ? 'bg-slate-100 text-slate-600'
-                                : ($rating->executed_at
-                                ? 'bg-emerald-50 text-emerald-700'
-                                : ($isDue ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-700'));
+                            $isDue = !$isRetracted && !$rating->executed_at && $rating->scheduled_for && $rating->scheduled_for->lte(now());
+                            $timeLabel = $isRetracted ? 'Zurückgerufen' : ($rating->executed_at ? 'Ausgeführt' : ($isDue ? 'Fällig' : 'Geplant'));
                             $score = $rating->rating_score !== null ? (float) $rating->rating_score : null;
-                            $scoreTone = $score === null
-                                ? 'bg-slate-100 text-slate-600'
-                                : ($score >= 0.7 ? 'bg-emerald-50 text-emerald-700' : ($score >= 0.4 ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'));
                             $targetScoreProfile = data_get($rating->data, 'planning.target_score_profile');
                             $syntheticUser = $rating->syntheticUser;
                             $baseUserId = $syntheticUser?->base_user_id ?: $rating->base_user_id;
-                            $profile = data_get($rating->data, 'planning.synthetic_user_profile', []);
-                            $userLabel = $syntheticUser?->name ?: data_get($profile, 'name');
-                            $username = $syntheticUser?->username ?: data_get($profile, 'username');
-                            $canDelete = $rating->canBeDeletedFromPlan() && ! $baseUserId;
+                            $canDelete = $rating->canBeDeletedFromPlan() && !$baseUserId;
                             $canReplan = $rating->isReplannableAt(now());
                             $isSelectedForReplan = isset($selectedRatingLookup[(string) $rating->id]);
+                            $stateLabels = ['Ausgefuehrt' => 'Ausgeführt', 'Faellig' => 'Fällig', 'Laeuft' => 'Läuft', 'Zurueckgerufen' => 'Zurückgerufen'];
                         @endphp
-
-                        <tr
-                            wire:key="planned-claim-rating-{{ $rating->id }}"
+                        <tr wire:key="planned-claim-rating-{{ $rating->id }}"
                             wire:click="openRatingModal({{ $rating->id }})"
-                            x-on:keydown.enter="$wire.openRatingModal({{ $rating->id }})"
-                            x-on:keydown.space.prevent="$wire.openRatingModal({{ $rating->id }})"
-                            tabindex="0"
-                            role="button"
-                            aria-label="Bewertung #{{ $rating->id }} anzeigen"
-                            @class([
-                                'group cursor-pointer transition hover:bg-slate-50 focus:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500',
-                                'bg-blue-50/70' => $isSelectedForReplan,
-                            ])
-                        >
-                            <td class="w-14 px-4 py-4 text-center align-top">
+                            x-on:keydown.enter.self="$wire.openRatingModal({{ $rating->id }})"
+                            x-on:keydown.space.self.prevent="$wire.openRatingModal({{ $rating->id }})"
+                            tabindex="0" aria-label="Bewertung #{{ $rating->id }} anzeigen"
+                            @class(['cursor-pointer focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500', 'bg-blue-50/60' => $isSelectedForReplan])>
+                            <td class="text-center align-top">
                                 @if($canReplan)
-                                    <input
-                                        type="checkbox"
-                                        value="{{ $rating->id }}"
-                                        wire:model.live="selectedRatingIds"
-                                        x-on:click.stop
-                                        x-on:keydown.stop
-                                        aria-label="Bewertung #{{ $rating->id }} fuer Neuplanung auswaehlen"
-                                        class="h-4 w-4 rounded border-slate-300 text-blue-700 focus:ring-blue-500"
-                                    >
+                                    <label class="inline-flex h-10 w-10 cursor-pointer items-center justify-center" x-on:click.stop>
+                                        <input type="checkbox" value="{{ $rating->id }}" wire:model.live="selectedRatingIds" x-on:keydown.stop aria-label="Bewertung #{{ $rating->id }} für Neuplanung auswählen" class="h-4 w-4 rounded border-slate-300 text-blue-700 focus:ring-blue-500">
+                                    </label>
                                 @else
-                                    <span class="inline-flex h-6 w-6 items-center justify-center text-slate-300" title="Nicht neu planbar">
-                                        <i class="fal fa-lock text-xs" aria-hidden="true"></i>
-                                        <span class="sr-only">Nicht neu planbar</span>
-                                    </span>
+                                    <span class="text-slate-300" title="Nicht neu planbar">–<span class="sr-only">Nicht neu planbar</span></span>
                                 @endif
                             </td>
-
-                            <td class="whitespace-nowrap px-4 py-4 align-top">
-                                <div class="flex items-center gap-3">
-                                    <span class="inline-flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-xs font-semibold text-slate-800">
-                                        #{{ $rating->id }}
-                                    </span>
-                                    <div class="min-w-0">
-                                        <div class="text-xs font-medium text-slate-500">Status</div>
-                                        <div class="mt-1 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium {{ $stateClasses }}">
-                                            <i class="fal {{ $stateIcon }}"></i>
-                                            {{ $state }}
-                                        </div>
-                                    </div>
-                                </div>
+                            <td class="min-w-[250px] align-top">
+                                @include('livewire.admin.partials.rating-user-identity', ['rating' => $rating])
                             </td>
-
-                            <td class="whitespace-nowrap px-4 py-4 align-top">
-                                <div class="inline-flex items-center gap-2 rounded-lg px-2.5 py-2 {{ $timeTone }}">
-                                    <i class="fal {{ $rating->executed_at ? 'fa-check-circle' : 'fa-clock' }}"></i>
-                                    <div>
-                                        <div class="text-sm font-semibold">{{ optional($displayTime)->format('d.m.Y H:i') ?? '-' }}</div>
-                                        <div class="text-[11px] font-medium">{{ $isDue ? 'Faellig' : $timeLabel }}</div>
-                                    </div>
-                                </div>
+                            <td class="align-top">
+                                <button type="button" wire:click.stop="openRatingModal({{ $rating->id }})" class="py-1 font-semibold tabular-nums text-slate-900 hover:text-blue-700">#{{ $rating->id }}</button>
+                                <p class="mt-1 text-xs font-medium text-slate-700">{{ $insuranceName }}</p>
+                                <p class="mt-1 text-xs text-slate-500">{{ $typeName }} · {{ $subtypeName }}</p>
+                                @if($rating->base_claim_rating_id)<p class="mt-1 text-xs tabular-nums text-slate-400">Base #{{ $rating->base_claim_rating_id }}</p>@endif
                             </td>
-
-                            <td class="min-w-[310px] px-4 py-4 align-top">
-                                <div class="font-semibold text-slate-950">{{ $userLabel ?: 'Kein Benutzer vorbereitet' }}</div>
-                                @if($username)<div class="mt-0.5 text-sm text-blue-700">{{ '@'.$username }}</div>@endif
-                                <div class="mt-2 font-medium text-slate-700">{{ $insuranceName }}</div>
-                                <div class="mt-1 flex flex-wrap gap-1.5">
-                                    <span class="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">{{ $typeName }}</span>
-                                    <span class="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">{{ $subtypeName }}</span>
-                                </div>
-                                <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                                    <span>Versicherung-ID {{ $rating->insurance_id ?? '-' }}</span>
-
-                                </div>
+                            <td class="whitespace-nowrap align-top">
+                                <p class="font-medium tabular-nums text-slate-800">{{ optional($displayTime)->format('d.m.Y') ?? '–' }}</p>
+                                <p class="mt-1 text-xs tabular-nums text-slate-500">{{ optional($displayTime)->format('H:i') }} · {{ $timeLabel }}</p>
                             </td>
-
-                            <td class="min-w-[190px] px-4 py-4 align-top">
-                                <div class="flex items-center gap-3">
-                                    <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md {{ $scoreTone }}">
-                                        <i class="fal {{ $score === null ? 'fa-bullseye-arrow' : 'fa-chart-line' }}"></i>
-                                    </span>
-                                    <div class="min-w-0">
-                                        @if($score !== null)
-                                            <div class="text-base font-semibold leading-none text-slate-950">{{ number_format($score, 2, ',', '.') }}</div>
-                                            <div class="mt-1 text-xs text-slate-500">Gesamtscore</div>
-                                        @elseif(is_array($targetScoreProfile))
-                                            <div class="truncate text-sm font-semibold text-slate-950">{{ $targetScoreProfile['label'] ?? 'Zielscore' }}</div>
-                                            <div class="mt-1 text-xs text-slate-500">Ziel {{ number_format((float) ($targetScoreProfile['target_score'] ?? 0), 2, ',', '.') }}</div>
-                                        @else
-                                            <div class="text-sm font-semibold text-slate-700">Noch offen</div>
-                                            <div class="mt-1 text-xs text-slate-500">AI nicht vorbereitet</div>
-                                        @endif
-                                    </div>
-                                </div>
-
-                                @if($isPrepared)
-                                    <div class="mt-2 inline-flex items-center gap-1 rounded-md border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-medium text-cyan-700">
-                                        <i class="fal fa-wand-magic-sparkles"></i>
-                                        AI vorbereitet
-                                    </div>
-                                @elseif($preparedAt)
-                                    <div class="mt-2 text-xs text-slate-500">{{ $preparedAt }}</div>
+                            <td class="align-top">
+                                @if($score !== null)
+                                    <span @class(['inline-flex rounded-md px-2 py-1 text-sm font-semibold tabular-nums', 'bg-emerald-50 text-emerald-800' => $score >= 0.7, 'bg-amber-50 text-amber-800' => $score >= 0.4 && $score < 0.7, 'bg-rose-50 text-rose-800' => $score < 0.4])>{{ number_format($score, 2, ',', '.') }}</span>
+                                @elseif(is_array($targetScoreProfile))
+                                    <p class="font-medium tabular-nums text-slate-700">{{ number_format((float) ($targetScoreProfile['target_score'] ?? 0), 2, ',', '.') }}</p>
+                                    <p class="mt-1 text-xs text-slate-400">Zielscore</p>
+                                @else
+                                    <span class="text-slate-400">Offen</span>
                                 @endif
+                                @if($isPrepared)<p class="mt-2 text-xs text-slate-500">AI vorbereitet</p>@endif
                             </td>
-
-                            <td class="min-w-[210px] px-4 py-4 align-top">
-                                <div class="flex flex-wrap items-center gap-2">
-                                    <span class="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
-                                        <i class="fal fa-rotate"></i>
-                                        {{ $rating->execution_attempts ?? 0 }} Versuche
-                                    </span>
-                                    <span class="inline-flex items-center rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
-                                        {{ $isRetracted ? 'Zurueckgerufen' : $rating->status_label }}
-                                    </span>
-                                </div>
-
+                            <td class="min-w-[180px] align-top">
+                                <span @class(['text-xs font-medium', 'text-rose-700' => $rating->status === 'failed', 'text-slate-700' => $rating->status !== 'failed'])>{{ $isRetracted ? 'Zurückgerufen' : $rating->status_label }}</span>
                                 <div class="mt-2">@include('livewire.admin.partials.claim-rating-sync-state')</div>
-                                @if($rating->last_execution_error)
-                                    <div class="mt-2 max-w-[260px] rounded-md border border-rose-200 bg-rose-50 px-2.5 py-2 text-xs leading-5 text-rose-700">
-                                        {{ $rating->last_execution_error }}
-                                    </div>
-                                @else
-                                    <div class="mt-2 text-xs text-slate-400">Keine Fehlermeldung</div>
-                                @endif
+                                @if($rating->execution_attempts > 0)<p class="mt-2 text-xs tabular-nums text-slate-400">{{ $rating->execution_attempts }} Ausführungsversuche</p>@endif
+                                @if($rating->last_execution_error)<p class="mt-2 max-w-xs text-xs leading-5 text-rose-700">{{ $rating->last_execution_error }}</p>@endif
                             </td>
-
-                            <td class="min-w-[210px] px-4 py-4 align-top">
-                                <div class="flex flex-col gap-1.5">
-                                    @if($rating->base_claim_rating_id)
-                                        <span class="inline-flex w-fit items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                                            <i class="fal fa-database"></i>
-                                            Bewertung #{{ $rating->base_claim_rating_id }}
-                                        </span>
-                                    @else
-                                        <span class="inline-flex w-fit items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-500">
-                                            <i class="fal fa-database"></i>
-                                            Bewertung offen
-                                        </span>
-                                    @endif
-
-                                    @if($baseUserId)
-                                        <span class="inline-flex w-fit items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
-                                            <i class="fal fa-user"></i>
-                                            Base-User #{{ $baseUserId }}
-                                        </span>
-                                    @elseif($syntheticUser)
-                                        <span class="inline-flex w-fit items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
-                                            <i class="fal fa-user"></i>
-                                            Lokal #{{ $syntheticUser->id }}
-                                        </span>
-                                    @else
-                                        <span class="text-xs text-slate-400">Kein Benutzer vorbereitet</span>
-                                    @endif
-                                </div>
-                            </td>
-
-                            <td class="whitespace-nowrap px-4 py-4 text-right align-top">
-                                <div class="flex justify-end gap-2">
+                            <td class="align-top">
+                                <div class="flex flex-wrap justify-end gap-2">
                                     @if($isRetracted)
                                         <span class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700">
                                             <i class="fal fa-ban"></i>
@@ -525,7 +230,7 @@
                                     @elseif($rating->status === \App\Models\ClaimRating::STATUS_PROCESSING)
                                         <span class="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700">
                                             <i class="fal fa-spinner fa-spin"></i>
-                                            AI laeuft
+                                            AI läuft
                                         </span>
                                     @elseif($rating->executed_at)
                                         <button
@@ -534,11 +239,11 @@
                                             wire:confirm="Diese Ausfuehrung wirklich rueckgaengig machen und den synthetischen Base-Datensatz entfernen?"
                                             wire:loading.attr="disabled"
                                             wire:target="undoExecution({{ $rating->id }})"
-                                            class="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-300 bg-white px-3 py-2 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                            class="rating-button text-rose-700"
                                         >
-                                            <i class="fal fa-rotate-left" wire:loading.remove wire:target="undoExecution({{ $rating->id }})"></i>
+                                            <i class="fal fa-undo" wire:loading.remove wire:target="undoExecution({{ $rating->id }})"></i>
                                             <i class="fal fa-spinner fa-spin" wire:loading wire:target="undoExecution({{ $rating->id }})"></i>
-                                            <span wire:loading.remove wire:target="undoExecution({{ $rating->id }})">Rueckgaengig</span>
+                                            <span wire:loading.remove wire:target="undoExecution({{ $rating->id }})">Rückgängig</span>
                                             <span wire:loading wire:target="undoExecution({{ $rating->id }})">Entfernt...</span>
                                         </button>
                                     @else
@@ -547,9 +252,9 @@
                                             wire:click.stop="prepareWithAi({{ $rating->id }})"
                                             wire:loading.attr="disabled"
                                             wire:target="prepareWithAi({{ $rating->id }})"
-                                            class="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                            class="rating-button"
                                         >
-                                            <i class="fal fa-wand-magic-sparkles" wire:loading.remove wire:target="prepareWithAi({{ $rating->id }})"></i>
+                                            <i class="fal fa-magic" wire:loading.remove wire:target="prepareWithAi({{ $rating->id }})"></i>
                                             <i class="fal fa-spinner fa-spin" wire:loading wire:target="prepareWithAi({{ $rating->id }})"></i>
                                             <span wire:loading.remove wire:target="prepareWithAi({{ $rating->id }})">
                                                 {{ $isPrepared ? 'AI neu' : 'AI' }}
@@ -562,11 +267,11 @@
                                             wire:click.stop="executeNow({{ $rating->id }})"
                                             wire:loading.attr="disabled"
                                             wire:target="executeNow({{ $rating->id }})"
-                                            class="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                                            class="rating-button rating-button-primary"
                                         >
                                             <i class="fal fa-play" wire:loading.remove wire:target="executeNow({{ $rating->id }})"></i>
                                             <i class="fal fa-spinner fa-spin" wire:loading wire:target="executeNow({{ $rating->id }})"></i>
-                                            <span wire:loading.remove wire:target="executeNow({{ $rating->id }})">Ausfuehren</span>
+                                            <span wire:loading.remove wire:target="executeNow({{ $rating->id }})">Ausführen</span>
                                             <span wire:loading wire:target="executeNow({{ $rating->id }})">Startet...</span>
                                         </button>
                                     @endif
@@ -578,12 +283,12 @@
                                             wire:confirm="Diese noch nicht ausgefuehrte Bewertung wirklich loeschen? Ein verwaister lokaler Testnutzer wird ebenfalls entfernt."
                                             wire:loading.attr="disabled"
                                             wire:target="deleteRating({{ $rating->id }})"
-                                            class="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-300 bg-white px-3 py-2 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                            class="rating-button text-rose-700"
                                         >
                                             <i class="fal fa-trash" wire:loading.remove wire:target="deleteRating({{ $rating->id }})"></i>
                                             <i class="fal fa-spinner fa-spin" wire:loading wire:target="deleteRating({{ $rating->id }})"></i>
-                                            <span wire:loading.remove wire:target="deleteRating({{ $rating->id }})">Loeschen</span>
-                                            <span wire:loading wire:target="deleteRating({{ $rating->id }})">Loescht...</span>
+                                            <span wire:loading.remove wire:target="deleteRating({{ $rating->id }})">Löschen</span>
+                                            <span wire:loading wire:target="deleteRating({{ $rating->id }})">Löscht…</span>
                                         </button>
                                     @endif
                                 </div>
@@ -591,14 +296,10 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="8" class="px-4 py-14 text-center">
-                                <div class="mx-auto flex max-w-sm flex-col items-center gap-2 text-sm text-slate-500">
-                                    <span class="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
-                                        <i class="fal fa-calendar-xmark"></i>
-                                    </span>
-                                    <div class="font-medium text-slate-700">Keine geplanten Bewertungen gefunden</div>
-                                    <div>Passe die Filter an oder starte die Planung erneut.</div>
-                                </div>
+                            <td colspan="7" class="px-4 py-14 text-center">
+                                <p class="font-semibold text-slate-700">Keine geplanten Bewertungen gefunden</p>
+                                <p class="mt-2 text-sm text-slate-500">Passe die Suche oder Filter an, um weitere Bewertungen zu sehen.</p>
+                                <button type="button" wire:click="clearFilters" class="rating-button mt-4">Filter zurücksetzen</button>
                             </td>
                         </tr>
                     @endforelse
@@ -607,9 +308,9 @@
         </div>
     </section>
 
-    <div>
-        {{ $ratings->links() }}
+    <div class="rating-list-footer">
+        <label class="rating-page-size">Pro Seite <select wire:model.live="perPage" aria-label="Einträge pro Seite">@foreach([15, 25, 50, 100] as $size)<option value="{{ $size }}">{{ $size }}</option>@endforeach</select></label>
+        <div class="min-w-0 flex-1">{{ $ratings->links() }}</div>
     </div>
-
     @include('livewire.admin.partials.claim-rating-detail-modal', ['selectedRating' => $selectedRating])
 </div>

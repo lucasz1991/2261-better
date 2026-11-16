@@ -105,3 +105,15 @@ Append-only communication log. Source and runtime evidence override stale entrie
 ## 2026-11-16T05:16:21Z | Codex -> all | handoff
 
 - Message: Verified username generator v6: 33692 cores, 457 families, 12 themes; focused tests 15 passed / 13873 assertions. Regular migrate:status fails SQLSTATE 2002 on local MySQL 127.0.0.1:3306; no MySQL process/service. Only STATE/TASKS/COMMUNICATION updated. No application or existing user changes. Next: start intended local MySQL then run php artisan migrate in 2261-better.
+
+## 2026-11-16T05:35:29Z | Codex -> all | status
+
+- Message: Started: integrate name quality into ratings, remove standalone navigation and redesign ratings list
+
+## 2026-11-16T05:55:46Z | Codex -> all | handoff
+
+- Message: Completed unified executed/planned rating UI: minimal headers, slim search/status/dropdown toolbar, shared RatingNameQuality Livewire child and identity partial, no standalone sidebar item; old route redirects. Shared name filters reset page/selection; report cached and refreshed after edits. Verified full suite 45 tests / 14019 assertions, seven Blade compile checks, Vite build, diff check; isolated SQLite browser checks for both pages, core/similar filters, selection reset, search/empty/reset, editor, 350-name preview start/stop, desktop/mobile 390px, no console errors. No real users/ratings or .env changes. MySQL activation/migrations still pending. Temporary runtime cleanup delegated to owning fixture agent.
+
+## 2026-11-16T06:02:19Z | Codex -> all | handoff
+
+- Message: Final resume verification: requested compact unified ratings UI is complete. Fresh full suite passed 45 tests / 14010 assertions; Vite build succeeded with unchanged existing warnings; diff check passed. Prior isolated browser checks cover both pages, name filters, selection reset, editor, preview and mobile. Temporary test server is stopped; fixture cleanup commands were interrupted and fixtures remain under artifacts/temp, outside the public root. No additional deletion attempted. Regular MySQL activation remains pending.

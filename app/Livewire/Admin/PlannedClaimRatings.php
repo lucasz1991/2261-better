@@ -454,7 +454,7 @@ class PlannedClaimRatings extends Component
         $ratings = $this->orderedRatingQuery($this->filteredPlannedQuery(), 'scheduled_for')
             ->paginate($this->ratingPageSize());
 
-        return view('livewire.admin.planned-claim-ratings', array_merge($this->ratingFilterViewData(), [
+        return view('livewire.admin.planned-claim-ratings', array_merge($this->ratingFilterViewData(), $this->nameQualityViewData($ratings), [
             'ratings' => $ratings,
             'stats' => $this->stats(),
             'filters' => $this->filters(),

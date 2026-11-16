@@ -3,15 +3,12 @@
     if ($rating->syntheticUser) {
         $editSyncStates['Benutzer'] = data_get($rating->syntheticUser->data, 'edit_sync.status', 'unknown');
     }
-    $editSyncLabels = ['local' => 'Nur lokal', 'pending' => 'Übertragung ausstehend', 'synced' => 'Änderung synchronisiert', 'failed' => 'Übertragung fehlgeschlagen', 'conflict' => 'Änderungskonflikt'];
+    $editSyncLabels = ['local' => 'Nur lokal', 'pending' => 'Übertragung ausstehend', 'synced' => 'Synchronisiert', 'failed' => 'Übertragung fehlgeschlagen', 'conflict' => 'Änderungskonflikt'];
 @endphp
-<div class="flex flex-col items-start gap-1">
+<div class="space-y-1">
     @foreach($editSyncStates as $subject => $editSyncState)
-        <span @class(['inline-flex rounded-md border px-2 py-1 text-xs font-medium',
-            'border-emerald-200 bg-emerald-50 text-emerald-800' => $editSyncState === 'synced',
-            'border-rose-200 bg-rose-50 text-rose-800' => in_array($editSyncState, ['failed', 'conflict'], true),
-            'border-amber-200 bg-amber-50 text-amber-800' => $editSyncState === 'pending',
-            'border-slate-200 bg-slate-50 text-slate-600' => !in_array($editSyncState, ['synced', 'failed', 'conflict', 'pending'], true),
-        ])>{{ $subject }}: {{ $editSyncLabels[$editSyncState] ?? 'Übertragung nicht geprüft' }}</span>
+        <p @class(['text-[11px] leading-4', 'text-rose-700' => in_array($editSyncState, ['failed', 'conflict'], true), 'text-amber-700' => $editSyncState === 'pending', 'text-slate-500' => !in_array($editSyncState, ['failed', 'conflict', 'pending'], true)])>
+            <span>{{ $subject }}:</span> {{ $editSyncLabels[$editSyncState] ?? 'Nicht geprüft' }}
+        </p>
     @endforeach
 </div>

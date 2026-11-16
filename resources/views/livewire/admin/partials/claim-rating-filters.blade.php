@@ -1,121 +1,69 @@
-<section class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm" aria-label="Bewertungen suchen und filtern">
-    <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <label class="block text-sm font-medium text-slate-700 md:col-span-2">
-            Suche nach Person oder Bewertung
-            <input type="search" wire:model.live.debounce.300ms="search" maxlength="200"
-                placeholder="Name, @Benutzername, E-Mail, Text oder ID"
-                class="mt-1 block w-full rounded-lg border-slate-300 text-sm focus:border-blue-500 focus:ring-blue-500">
+<section class="rating-tools" aria-label="Bewertungen suchen und filtern">
+    <div class="rating-filter-line">
+        <label class="rating-search">
+            <span class="sr-only">Suche nach Person oder Bewertung</span>
+            <i class="fal fa-search" aria-hidden="true"></i>
+            <input type="search" wire:model.live.debounce.300ms="search" maxlength="200" placeholder="Name, @Benutzername, Text oder ID …">
         </label>
-        <label class="block text-sm font-medium text-slate-700">
-            Bewertungsstatus
-            <select wire:model.live="status" class="mt-1 block w-full rounded-lg border-slate-300 text-sm focus:border-blue-500 focus:ring-blue-500">
+        <label class="rating-quick-filter">
+            <span class="sr-only">Bewertungsstatus</span>
+            <select wire:model.live="status" aria-label="Bewertungsstatus">
                 <option value="">Alle Status</option>
-                @foreach($statusOptions as $value => $label)
-                    <option value="{{ $value }}">{{ $label }}</option>
-                @endforeach
+                @foreach($statusOptions as $value => $label)<option value="{{ $value }}">{{ $label }}</option>@endforeach
             </select>
         </label>
         @if(isset($filters))
-            <label class="block text-sm font-medium text-slate-700">
-                Ausführung
-                <select wire:model.live="executionFilter" class="mt-1 block w-full rounded-lg border-slate-300 text-sm focus:border-blue-500 focus:ring-blue-500">
-                    @foreach($filters as $value => $label)
-                        <option value="{{ $value }}">{{ $label }}</option>
+            <label class="rating-quick-filter">
+                <span class="sr-only">Ausführung</span>
+                <select wire:model.live="executionFilter" aria-label="Ausführung">
+                    @foreach($filters as $value => $label)<option value="{{ $value }}">{{ $label }}</option>@endforeach
+                </select>
+            </label>
+        @endif
+        <details class="rating-filter-dropdown" wire:ignore.self wire:key="advanced-rating-filters"
+            x-data x-on:click.outside="$el.removeAttribute('open')" x-on:keydown.escape.stop="$el.removeAttribute('open'); $el.querySelector('summary').focus()">
+            <summary class="rating-button"><i class="fal fa-sliders-h" aria-hidden="true"></i>Filter
+                @if(count($activeRatingFilters))<span class="rating-small-count">{{ count($activeRatingFilters) }}</span>@endif
+                <i class="fal fa-angle-down" aria-hidden="true"></i>
+            </summary>
+            <div class="rating-popover rating-filter-panel">
+                <div class="rating-popover-heading"><strong>Bewertungen eingrenzen</strong><button type="button" class="rating-row-action" x-on:click="$el.closest('details').removeAttribute('open'); $el.closest('details').querySelector('summary').focus()" aria-label="Filter schließen"><i class="fal fa-times" aria-hidden="true"></i></button></div>
+                <div class="rating-filter-grid">
+                    <label class="rating-field">Zeitraum nach
+                        <select wire:model.live="filterDateField"><option value="created_at">Erstelldatum</option><option value="scheduled_for">Planung</option><option value="executed_at">Ausführung</option><option value="updated_at">Letzte Änderung</option></select>
+                    </label>
+                    <label class="rating-field">Von<input type="date" wire:model.live="filterDateFrom"></label>
+                    <label class="rating-field">Bis einschließlich<input type="date" wire:model.live="filterDateTo"></label>
+                    @foreach(['filterInsurance' => ['insurance_id', 'Versicherer'], 'filterType' => ['insurance_type_id', 'Versicherungsart'], 'filterSubtype' => ['insurance_subtype_id', 'Unterart']] as $property => [$key, $label])
+                        <label class="rating-field">{{ $label }}<select wire:model.live="{{ $property }}"><option value="">Alle</option>@foreach($ratingFilterOptions[$key] as $id => $name)<option value="{{ $id }}">{{ $name }}</option>@endforeach</select></label>
                     @endforeach
-                </select>
-            </label>
-        @else
-            <label class="block text-sm font-medium text-slate-700">
-                Einträge pro Seite
-                <select wire:model.live="perPage" class="mt-1 block w-full rounded-lg border-slate-300 text-sm focus:border-blue-500 focus:ring-blue-500">
-                    @foreach([15, 25, 50, 100] as $size)<option value="{{ $size }}">{{ $size }}</option>@endforeach
-                </select>
-            </label>
-        @endif
-    </div>
-
-    <details class="mt-4 rounded-lg border border-slate-200" wire:key="advanced-rating-filters">
-        <summary class="cursor-pointer px-3 py-2 text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500">Weitere Filter: Zeitraum, Versicherung, Benutzer und Übertragung</summary>
-        <div class="grid gap-3 border-t border-slate-100 p-3 sm:grid-cols-2 lg:grid-cols-4">
-            <label class="text-xs font-medium text-slate-600">Datumsart
-                <select wire:model.live="filterDateField" class="mt-1 block w-full rounded-md border-slate-300 text-sm">
-                    <option value="created_at">Erstellt am</option><option value="scheduled_for">Geplant am</option>
-                    <option value="executed_at">Ausgeführt am</option><option value="updated_at">Geändert am</option>
-                </select>
-            </label>
-            <label class="text-xs font-medium text-slate-600">Von (Europe/Berlin)
-                <input type="date" wire:model.live="filterDateFrom" class="mt-1 block w-full rounded-md border-slate-300 text-sm">
-            </label>
-            <label class="text-xs font-medium text-slate-600">Bis einschließlich
-                <input type="date" wire:model.live="filterDateTo" class="mt-1 block w-full rounded-md border-slate-300 text-sm">
-            </label>
-            <label class="text-xs font-medium text-slate-600">Übertragung (Bewertung + Benutzer)
-                <select wire:model.live="filterSync" class="mt-1 block w-full rounded-md border-slate-300 text-sm">
-                    <option value="">Alle</option><option value="local">Nur lokal</option><option value="pending">Ausstehend</option>
-                    <option value="synced">Synchronisiert</option><option value="failed">Fehlgeschlagen</option><option value="conflict">Konflikt</option>
-                    <option value="unknown">Noch nicht geprüft</option>
-                </select>
-                <span class="mt-1 block font-normal text-slate-500">Konflikte, Fehler und ausstehende Änderungen haben Vorrang.</span>
-            </label>
-            @foreach(['filterInsurance' => ['insurance_id', 'Versicherer'], 'filterType' => ['insurance_type_id', 'Versicherungsart'], 'filterSubtype' => ['insurance_subtype_id', 'Unterart']] as $property => [$key, $label])
-                <label class="text-xs font-medium text-slate-600">{{ $label }}
-                    <select wire:model.live="{{ $property }}" class="mt-1 block w-full rounded-md border-slate-300 text-sm">
-                        <option value="">Alle</option>
-                        @foreach($ratingFilterOptions[$key] as $id => $name)<option value="{{ $id }}">{{ $name }}</option>@endforeach
-                    </select>
-                </label>
-            @endforeach
-            <div class="grid grid-cols-2 gap-2">
-                <label class="text-xs font-medium text-slate-600">Score ab
-                    <input type="number" min="0" max="1" step="0.01" wire:model.live.debounce.300ms="filterScoreMin" placeholder="0,00" class="mt-1 block w-full rounded-md border-slate-300 text-sm">
-                </label>
-                <label class="text-xs font-medium text-slate-600">Score bis
-                    <input type="number" min="0" max="1" step="0.01" wire:model.live.debounce.300ms="filterScoreMax" placeholder="1,00" class="mt-1 block w-full rounded-md border-slate-300 text-sm">
-                </label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <label class="rating-field">Score ab<input type="number" min="0" max="1" step="0.01" wire:model.live.debounce.300ms="filterScoreMin" placeholder="0,00"></label>
+                        <label class="rating-field">Score bis<input type="number" min="0" max="1" step="0.01" wire:model.live.debounce.300ms="filterScoreMax" placeholder="1,00"></label>
+                    </div>
+                    <label class="rating-field">Sichtbarkeit<select wire:model.live="filterVisibility"><option value="">Alle</option><option value="public">Öffentlich markiert</option><option value="private">Nicht öffentlich</option></select></label>
+                    <label class="rating-field">Übertragung<select wire:model.live="filterSync"><option value="">Alle</option><option value="local">Nur lokal</option><option value="pending">Ausstehend</option><option value="synced">Synchronisiert</option><option value="failed">Fehlgeschlagen</option><option value="conflict">Konflikt</option><option value="unknown">Noch nicht geprüft</option></select></label>
+                    <label class="rating-field">Base-Verknüpfung<select wire:model.live="filterBaseLink"><option value="">Alle</option><option value="linked">Verknüpft</option><option value="unlinked">Nicht verknüpft</option></select></label>
+                    <label class="rating-field">Manuell bearbeitet<select wire:model.live="filterManual"><option value="">Alle</option><option value="yes">Ja</option><option value="no">Nein</option></select></label>
+                    <label class="rating-field">Namensgenerator<select wire:model.live="filterGenerator"><option value="">Alle Versionen</option><option value="6">Version 6</option><option value="legacy">Älter / unbekannt</option></select></label>
+                    <label class="rating-field">Sortieren nach<select wire:model.live="sortField"><option value="id">Bewertungs-ID</option><option value="name">Anzeigename</option><option value="username">Benutzername</option><option value="rating_score">Score</option><option value="status">Status</option><option value="is_public">Sichtbarkeit</option><option value="base_claim_rating_id">Base-ID</option><option value="executed_at">Ausführung</option>@if(isset($filters))<option value="scheduled_for">Termin</option>@endif<option value="created_at">Erstellung</option><option value="updated_at">Letzte Änderung</option></select></label>
+                    <label class="rating-field">Reihenfolge<select wire:model.live="sortDirection"><option value="desc">Absteigend</option><option value="asc">Aufsteigend</option></select></label>
+                </div>
+                <div class="rating-popover-footer"><span>Filter werden sofort angewendet. Zeiten: Berlin.</span><button type="button" wire:click="clearFilters" class="rating-text-button">Zurücksetzen</button></div>
             </div>
-            <label class="text-xs font-medium text-slate-600">Sichtbarkeit (lokaler Stand)
-                <select wire:model.live="filterVisibility" class="mt-1 block w-full rounded-md border-slate-300 text-sm">
-                    <option value="">Alle</option><option value="public">Öffentlich markiert</option><option value="private">Nicht öffentlich</option>
-                </select>
-            </label>
-            <label class="text-xs font-medium text-slate-600">Base-Bewertung verknüpft
-                <select wire:model.live="filterBaseLink" class="mt-1 block w-full rounded-md border-slate-300 text-sm">
-                    <option value="">Alle</option><option value="linked">Ja</option><option value="unlinked">Nein</option>
-                </select>
-            </label>
-            <label class="text-xs font-medium text-slate-600">Manuell bearbeitet
-                <select wire:model.live="filterManual" class="mt-1 block w-full rounded-md border-slate-300 text-sm">
-                    <option value="">Alle</option><option value="yes">Ja</option><option value="no">Nein</option>
-                </select>
-            </label>
-            <label class="text-xs font-medium text-slate-600">Benutzernamen-Generator
-                <select wire:model.live="filterGenerator" class="mt-1 block w-full rounded-md border-slate-300 text-sm">
-                    <option value="">Alle</option><option value="6">Version 6</option><option value="legacy">Älter / unbekannt</option>
-                </select>
-            </label>
-        </div>
-    </details>
-
-    <div class="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
-        <div class="flex flex-wrap items-center gap-2" aria-live="polite">
-            <strong class="text-slate-700">{{ $ratings->total() }} Treffer</strong>
-            <span wire:loading.delay class="text-blue-700">Wird aktualisiert …</span>
-            @foreach($activeRatingFilters as $property => $label)
-                <button type="button" wire:click="removeRatingFilter('{{ $property }}')" class="inline-flex max-w-xs items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-blue-800 hover:bg-blue-100" title="Diesen Filter entfernen">
-                    <span class="truncate">{{ $label }}</span><span aria-hidden="true">×</span><span class="sr-only">entfernen</span>
-                </button>
-            @endforeach
-        </div>
-        @if(isset($filters))
-            <label class="flex items-center gap-2">Pro Seite
-                <select wire:model.live="perPage" class="rounded-md border-slate-300 py-1 text-xs">
-                    @foreach([15, 25, 50, 100] as $size)<option value="{{ $size }}">{{ $size }}</option>@endforeach
-                </select>
-            </label>
-        @endif
-        <button type="button" wire:click="clearFilters" class="font-medium text-blue-700 underline">Filter zurücksetzen</button>
+        </details>
+        @can('synthetic_users.quality')
+            <livewire:admin.rating-name-quality wire:model.live="filterNameQuality" :key="'rating-name-quality-' . $this->getId()" />
+        @endcan
+        <span class="rating-result-count" aria-live="polite">{{ number_format($ratings->total(), 0, ',', '.') }} Treffer<span wire:loading.delay class="ml-2" aria-label="Wird aktualisiert"><i class="fal fa-spinner fa-spin" aria-hidden="true"></i></span></span>
     </div>
-    @foreach($ratingFilterErrors as $message)
-        <p role="alert" class="mt-3 rounded-md bg-rose-50 p-3 text-sm text-rose-700">{{ $message }}</p>
-    @endforeach
+    @if($activeRatingFilters)
+        <div class="rating-active-filters" aria-label="Aktive Filter">
+            @foreach($activeRatingFilters as $property => $label)
+                <button type="button" wire:click="removeRatingFilter('{{ $property }}')" class="rating-filter-chip" title="Diesen Filter entfernen"><span>{{ $label }}</span><i class="fal fa-times" aria-hidden="true"></i><span class="sr-only">entfernen</span></button>
+            @endforeach
+            <button type="button" wire:click="clearFilters" class="rating-text-button">Alle zurücksetzen</button>
+        </div>
+    @endif
+    @foreach($ratingFilterErrors as $message)<p role="alert" class="mt-2 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{{ $message }}</p>@endforeach
 </section>

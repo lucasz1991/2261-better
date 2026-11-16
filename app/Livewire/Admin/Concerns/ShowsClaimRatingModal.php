@@ -107,6 +107,7 @@ trait ShowsClaimRatingModal
             'editContentConfirmed' => $this->editContentConfirmed,
         ], $this->editRatingToken, $this->editUserToken, $this->editBaseSnapshot);
         $this->fillRatingEditForm();
+        $this->dispatch('rating-user-edited');
         session()->flash(in_array($revision->status, ['synced', 'local'], true) ? 'success' : 'error', $revision->status_label.'.'.($revision->last_error ? ' '.$revision->last_error : ''));
     }
 
@@ -145,6 +146,7 @@ trait ShowsClaimRatingModal
         abort_unless(in_array($revision->status, ['pending', 'failed'], true), 422);
         $revision = app(RatingEditSynchronizer::class)->synchronize($revision);
         $this->fillRatingEditForm();
+        $this->dispatch('rating-user-edited');
         session()->flash($revision->status === 'synced' ? 'success' : 'error', $revision->status_label);
     }
 
@@ -156,6 +158,7 @@ trait ShowsClaimRatingModal
         $revision = RatingEditRevision::query()->whereKey($revisionId)->where('claim_rating_id', $rating->id)->firstOrFail();
         $revision = app(RatingEditService::class)->resolveConflict($revision, $this->editBaseSnapshot, $this->editReason);
         $this->fillRatingEditForm();
+        $this->dispatch('rating-user-edited');
         session()->flash($revision->status === 'synced' ? 'success' : 'error', $revision->status_label);
     }
 
@@ -167,6 +170,7 @@ trait ShowsClaimRatingModal
         $revision = RatingEditRevision::query()->whereKey($revisionId)->where('claim_rating_id', $rating->id)->firstOrFail();
         $revision = app(RatingEditService::class)->discardConflict($revision, $this->editReason);
         $this->fillRatingEditForm();
+        $this->dispatch('rating-user-edited');
         session()->flash('success', $revision->status_label.'. Base blieb unverändert.');
     }
 

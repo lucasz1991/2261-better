@@ -2,6 +2,7 @@
 
 | Task | Owner | Status | Updated (UTC) |
 |---|---|---|---|
+| Unify executed/planned rating UI and embed shared Livewire name-quality module | Codex + integrate_name_quality + planned_list_design + ratings_preview_fixture | completed locally; isolated browser and automated checks passed | 2026-11-16 |
 | Verify new generator and regular local activation | Codex + verify_generator | generator verified; activation blocked by stopped local MySQL | 2026-11-16 |
 | Realistischere synthetische Namen, Benutzernamen und E-Mail-Adressen | Codex | completed | 2026-08-26 |
 | Synthetische Identitaeten v3 mit groesserer kultureller und struktureller Vielfalt | Codex | completed | 2026-08-26 |

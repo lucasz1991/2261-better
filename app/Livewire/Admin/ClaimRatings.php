@@ -58,7 +58,7 @@ class ClaimRatings extends Component
         $ratings = $this->orderedRatingQuery($this->applyRatingFilters($this->ratingDetailQuery()), 'executed_at')
             ->paginate($this->ratingPageSize());
 
-        return view('livewire.admin.claim-ratings', array_merge($this->ratingFilterViewData(), [
+        return view('livewire.admin.claim-ratings', array_merge($this->ratingFilterViewData(), $this->nameQualityViewData($ratings), [
             'ratings' => $ratings,
             'statusOptions' => ClaimRating::statusOptions(),
             'selectedRating' => $this->selectedRating(),

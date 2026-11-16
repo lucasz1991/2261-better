@@ -11,6 +11,8 @@ use Livewire\Attributes\Url;
 
 trait FiltersClaimRatings
 {
+    use ChecksRatingUsernames;
+
     #[Url(except: '')]
     public string $status = '';
 
@@ -103,7 +105,7 @@ trait FiltersClaimRatings
         return [
             'status', 'filterDateFrom', 'filterDateTo', 'filterDateField',
             'filterInsurance', 'filterType', 'filterSubtype', 'filterScoreMin', 'filterScoreMax',
-            'filterVisibility', 'filterBaseLink', 'filterManual', 'filterGenerator', 'filterSync',
+            'filterVisibility', 'filterBaseLink', 'filterManual', 'filterGenerator', 'filterSync', 'filterNameQuality',
         ];
     }
 
@@ -124,6 +126,7 @@ trait FiltersClaimRatings
             'manual' => $this->filterManual,
             'generator' => $this->filterGenerator,
             'sync' => $this->filterSync,
+            'name_quality' => $this->filterNameQuality,
         ];
     }
 
@@ -145,6 +148,7 @@ trait FiltersClaimRatings
             'manual' => ['nullable', 'in:yes,no'],
             'generator' => ['nullable', 'in:6,legacy'],
             'sync' => ['nullable', 'in:local,pending,synced,failed,conflict,unknown'],
+            'name_quality' => ['nullable', 'in:'.implode(',', array_keys($this->nameQualityOptions()))],
         ]);
 
         if ($validator->fails()) {
@@ -169,7 +173,7 @@ trait FiltersClaimRatings
             return $query->whereRaw('1 = 0');
         }
 
-        return $query->search($this->search)->adminFilters($this->ratingFilterValues());
+        return $this->applyNameQualityFilter($query->search($this->search)->adminFilters($this->ratingFilterValues()));
     }
 
     protected function orderedRatingQuery(Builder $query, string $default): Builder
@@ -225,7 +229,7 @@ trait FiltersClaimRatings
             'filterInsurance' => 'Versicherer-ID', 'filterType' => 'Art-ID', 'filterSubtype' => 'Unterart-ID',
             'filterScoreMin' => 'Score ab', 'filterScoreMax' => 'Score bis', 'filterVisibility' => 'Sichtbarkeit',
             'filterBaseLink' => 'Base-Verknüpfung', 'filterManual' => 'Manuell geändert',
-            'filterGenerator' => 'Generator', 'filterSync' => 'Übertragung',
+            'filterGenerator' => 'Generator', 'filterSync' => 'Übertragung', 'filterNameQuality' => 'Benutzernamen',
         ];
         $values = ['public' => 'öffentlich markiert', 'private' => 'nicht öffentlich', 'linked' => 'vorhanden',
             'unlinked' => 'fehlt', 'yes' => 'ja', 'no' => 'nein', 'legacy' => 'älter / unbekannt',
@@ -235,7 +239,7 @@ trait FiltersClaimRatings
 
         foreach ($labels as $property => $label) {
             if ($this->{$property} !== '') {
-                $value = $property === 'status' ? (ClaimRating::statusOptions()[$this->status] ?? $this->status) : ($values[$this->{$property}] ?? $this->{$property});
+                $value = $property === 'filterNameQuality' ? ($this->nameQualityOptions()[$this->filterNameQuality] ?? $this->filterNameQuality) : ($property === 'status' ? (ClaimRating::statusOptions()[$this->status] ?? $this->status) : ($values[$this->{$property}] ?? $this->{$property}));
                 $chips[$property] = $label.': '.$value;
             }
         }

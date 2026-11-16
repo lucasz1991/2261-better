@@ -1,5 +1,12 @@
 # Decisions
 
+## 2026-11-16 | Unified rating-list tools
+
+- User explicitly requested no separate username-quality navigation. Integrate checks into both executed and planned rating lists using a real reusable Livewire child (`RatingNameQuality`), one filter Blade partial and shared identity presentation.
+- Keep headers minimal and place search/status/dropdown controls in one compact desktop row. Mobile controls wrap and panels stay inside the viewport. Keep AI planning settings collapsed.
+- Use Modelable state plus an explicit child filter event to reliably reset parent pagination and selected rating IDs. Cache the report and invalidate using the allocation revision; normal list rendering does not initiate an expensive scan.
+- Preserve legacy user-page links with a redirect. Existing rating/user editor and planning operations remain the source of edits; no automatic mass corrections.
+
 ## 2026-11-16 | Approved local implementation
 
 - Implement the approved generator/search/editor plan locally. No production publication or mass correction of historical names.

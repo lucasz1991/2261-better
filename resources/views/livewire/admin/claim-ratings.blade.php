@@ -1,137 +1,67 @@
-<div class="space-y-5">
-    <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-            <h1 class="text-2xl font-semibold text-slate-900">Bewertungen</h1>
-            <p class="mt-1 text-sm text-slate-600">Ausgeführte Bewertungen mit Benutzer, Sichtbarkeit und Übertragungsstand. Eine verknüpfte Base-ID allein bestätigt keine aktuelle öffentliche Anzeige.</p>
+<div class="rating-workspace">
+    <header class="rating-page-header">
+        <div class="flex flex-wrap items-center gap-3">
+            <h1>Bewertungen</h1>
+            <span class="rating-count">{{ number_format($ratings->total(), 0, ',', '.') }}</span>
         </div>
+        <span class="rating-meta">Ausgeführte Bewertungen</span>
+    </header>
 
-        <button
-            type="button"
-            wire:click="clearFilters"
-            class="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-        >
-            Filter zuruecksetzen
-        </button>
-    </div>
+    @if(session('success'))<div role="status" class="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{{ session('success') }}</div>@endif
+    @if(session('error'))<div role="alert" class="rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-800">{{ session('error') }}</div>@endif
 
     @include('livewire.admin.partials.claim-rating-filters')
 
-    <div class="overflow-hidden rounded-md border border-slate-200 bg-white">
-        <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-slate-200 text-sm">
-                <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+    <div class="rating-shell">
+        <div class="rating-table-scroll" tabindex="0" role="region" aria-label="Bewertungsliste, horizontal scrollbar">
+            <table class="rating-table">
+                <thead>
                     <tr>
-                        <th class="px-4 py-3">
-                            <button type="button" wire:click="sortBy('id')" class="font-semibold">ID</button>
-                        </th>
-                        <th class="px-4 py-3">
-                            <button type="button" wire:click="sortBy('base_claim_rating_id')" class="font-semibold">Base-ID</button>
-                        </th>
-                        <th class="px-4 py-3">
-                            <div class="flex gap-2"><button type="button" wire:click="sortBy('name')" class="font-semibold">Name</button><span aria-hidden="true">/</span><button type="button" wire:click="sortBy('username')" class="font-semibold">Benutzername</button></div>
-                        </th>
-                        <th class="px-4 py-3">Versicherung</th>
-                        <th class="px-4 py-3">
-                            <button type="button" wire:click="sortBy('rating_score')" class="font-semibold">Score</button>
-                        </th>
-                        <th class="px-4 py-3">
-                            <button type="button" wire:click="sortBy('status')" class="font-semibold">Status</button>
-                        </th>
-                        <th class="px-4 py-3">
-                            <button type="button" wire:click="sortBy('is_public')" class="font-semibold">Sichtbar</button>
-                        </th>
-                        <th class="px-4 py-3">
-                            <button type="button" wire:click="sortBy('executed_at')" class="font-semibold">Ausgefuehrt</button>
-                        </th>
+                        @foreach(['name' => 'Benutzer', 'id' => 'Bewertung', 'rating_score' => 'Score', 'status' => 'Status', 'executed_at' => 'Ausgeführt'] as $field => $label)
+                            <th scope="col" aria-sort="{{ $sortField === $field ? ($sortDirection === 'asc' ? 'ascending' : 'descending') : 'none' }}">
+                                <button type="button" wire:click="sortBy('{{ $field }}')">{{ $label }} <i class="fal fa-sort" aria-hidden="true"></i></button>
+                            </th>
+                        @endforeach
+                        <th scope="col"><span class="sr-only">Aktionen</span></th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-100 bg-white">
+                <tbody>
                     @forelse($ratings as $rating)
                         @php
-                            $syntheticUser = $rating->syntheticUser;
-                            $baseUserId = $syntheticUser?->base_user_id ?: $rating->base_user_id;
-                            $profile = data_get($rating->data, 'planning.synthetic_user_profile', []);
-                            $displayName = $syntheticUser?->name ?: data_get($profile, 'name', 'Kein Benutzer');
-                            $username = $syntheticUser?->username ?: data_get($profile, 'username');
+                            $insurance = data_get($rating->data, 'base_context.insurance.name') ?: 'Versicherer #'.($rating->insurance_id ?? '–');
+                            $insuranceType = data_get($rating->data, 'base_context.insurance_type.name');
+                            $summary = data_get($rating->attachments, 'scorings.ai_overall_comment') ?: data_get($rating->answers, 'regulationComment');
+                            $score = $rating->rating_score !== null ? (float) $rating->rating_score : null;
                         @endphp
-                        <tr
-                            wire:key="claim-rating-{{ $rating->id }}"
-                            wire:click="openRatingModal({{ $rating->id }})"
-                            x-on:keydown.enter="$wire.openRatingModal({{ $rating->id }})"
-                            x-on:keydown.space.prevent="$wire.openRatingModal({{ $rating->id }})"
-                            tabindex="0"
-                            role="button"
-                            aria-label="Bewertung #{{ $rating->id }} anzeigen"
-                            class="cursor-pointer hover:bg-slate-50 focus:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
-                        >
-                            <td class="whitespace-nowrap px-4 py-3 font-medium text-slate-900">#{{ $rating->id }}</td>
-                            <td class="whitespace-nowrap px-4 py-3 text-slate-700">
-                                {{ $rating->base_claim_rating_id ? '#' . $rating->base_claim_rating_id : '-' }}
+                        <tr wire:key="claim-rating-{{ $rating->id }}" wire:click="openRatingModal({{ $rating->id }})" class="rating-clickable-row">
+                            <td class="rating-person-cell">@include('livewire.admin.partials.rating-user-identity', ['rating' => $rating])</td>
+                            <td class="rating-review-cell">
+                                <div class="flex items-center gap-2"><span class="font-semibold text-slate-800">{{ $insurance }}</span><span class="rating-meta">#{{ $rating->id }}</span></div>
+                                @if($insuranceType)<p class="rating-meta mt-1">{{ $insuranceType }}</p>@endif
+                                @if($summary)<p class="rating-excerpt" title="{{ $summary }}">{{ \Illuminate\Support\Str::limit($summary, 120) }}</p>@endif
+                                @if($rating->base_claim_rating_id)<p class="rating-meta mt-1">Base #{{ $rating->base_claim_rating_id }}</p>@endif
                             </td>
-                            <td class="whitespace-nowrap px-4 py-3 text-slate-700">
-                                @if($syntheticUser || $baseUserId)
-                                    <div class="space-y-1">
-                                        <div class="font-semibold text-slate-900">{{ $displayName }}</div>
-                                        @if($username)<div class="text-sm text-blue-700">{{ '@'.$username }}</div>@endif
-                                        @if($syntheticUser)
-                                            <span class="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-700">
-                                                Lokal #{{ $syntheticUser->id }}
-                                            </span>
-                                        @endif
-                                        @if($baseUserId)
-                                            <span class="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
-                                                Base #{{ $baseUserId }}
-                                            </span>
-                                        @endif
-                                    </div>
-                                @else
-                                    <div class="font-medium text-slate-700">{{ $displayName }}</div>
-                                    @if($username)<div class="text-xs text-blue-700">{{ '@'.$username }}</div>@endif
-                                @endif
-                            </td>
-                            <td class="whitespace-nowrap px-4 py-3 text-slate-700">
-                                <div>{{ data_get($rating->data, 'base_context.insurance.name') ?: 'Versicherung: ' . ($rating->insurance_id ?? '-') }}</div>
-                                <div class="text-xs text-slate-500">
-                                    {{ data_get($rating->data, 'base_context.insurance_type.name') ?: 'Typ: ' . ($rating->insurance_type_id ?? '-') }}
-                                    /
-                                    {{ data_get($rating->data, 'base_context.insurance_subtype.name') ?: 'Untertyp: ' . ($rating->insurance_subtype_id ?? '-') }}
+                            <td><span @class(['rating-score', 'rating-score-good' => $score !== null && $score >= .7, 'rating-score-medium' => $score !== null && $score < .7 && $score >= .4])>{{ $score !== null ? number_format($score, 2, ',', '.') : '–' }}</span></td>
+                            <td>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span @class(['rating-status', 'rating-status-error' => $rating->status === 'failed'])><span class="rating-status-dot" aria-hidden="true"></span>{{ $rating->status_label }}</span>
+                                    <span class="rating-meta" title="Sichtbarkeit laut lokalem Stand; die Base-Verknüpfung allein bestätigt keine öffentliche Anzeige.">{{ $rating->is_public ? 'Öffentlich markiert' : 'Nicht öffentlich' }}</span>
                                 </div>
-                            </td>
-                            <td class="whitespace-nowrap px-4 py-3 text-slate-700">
-                                {{ $rating->rating_score ?? '-' }}
-                            </td>
-                            <td class="whitespace-nowrap px-4 py-3">
-                                <span class="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-700">
-                                    {{ $rating->status_label }}
-                                </span>
                                 <div class="mt-2">@include('livewire.admin.partials.claim-rating-sync-state')</div>
                             </td>
-                            <td class="whitespace-nowrap px-4 py-3">
-                                @if($rating->is_public)
-                                    <span class="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">Ja</span>
-                                @else
-                                    <span class="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600">Nein</span>
-                                @endif
-                            </td>
-                            <td class="whitespace-nowrap px-4 py-3 text-slate-600">
-                                {{ optional($rating->executed_at)->format('d.m.Y H:i') ?? '-' }}
-                            </td>
+                            <td class="whitespace-nowrap tabular-nums"><div class="font-medium text-slate-700">{{ $rating->executed_at?->format('d.m.Y') ?? '–' }}</div><div class="rating-meta mt-1">{{ $rating->executed_at?->format('H:i') }}</div></td>
+                            <td class="text-right"><button type="button" wire:click.stop="openRatingModal({{ $rating->id }})" class="rating-row-action" aria-label="Bewertung #{{ $rating->id }} öffnen" title="Bewertung und Benutzer bearbeiten"><i class="fal fa-arrow-right" aria-hidden="true"></i></button></td>
                         </tr>
                     @empty
-                        <tr>
-                            <td colspan="8" class="px-4 py-10 text-center text-sm text-slate-500">
-                                Keine Bewertungen für diese Filter gefunden. Suche oder Filter zurücksetzen.
-                            </td>
-                        </tr>
+                        <tr><td colspan="6"><div class="rating-empty"><i class="fal fa-search" aria-hidden="true"></i><h2>Keine passenden Bewertungen</h2><p>Ändere die Suche oder setze die Filter zurück.</p><button type="button" wire:click="clearFilters" class="rating-button mt-3">Filter zurücksetzen</button></div></td></tr>
                     @endforelse
                 </tbody>
             </table>
         </div>
+        <div class="rating-list-footer">
+            <label class="rating-page-size">Pro Seite <select wire:model.live="perPage" aria-label="Einträge pro Seite">@foreach([15, 25, 50, 100] as $size)<option value="{{ $size }}">{{ $size }}</option>@endforeach</select></label>
+            <div class="min-w-0 flex-1">{{ $ratings->links() }}</div>
+        </div>
     </div>
-
-    <div>
-        {{ $ratings->links() }}
-    </div>
-
     @include('livewire.admin.partials.claim-rating-detail-modal', ['selectedRating' => $selectedRating])
 </div>

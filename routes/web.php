@@ -3,7 +3,6 @@
 use App\Livewire\Admin\ClaimRatings;
 use App\Livewire\Admin\Employees;
 use App\Livewire\Admin\PlannedClaimRatings;
-use App\Livewire\Admin\SyntheticUsers;
 use App\Livewire\AdminConfig;
 use App\Livewire\AdminDashboard;
 use Illuminate\Http\Request;
@@ -52,6 +51,6 @@ Route::middleware(['auth:sanctum', 'auth.status', config('jetstream.auth_session
         Route::get('/', AdminDashboard::class)->name('dashboard');
         Route::get('/index', AdminDashboard::class)->name('index');
         Route::get('/reviews', ClaimRatings::class)->name('reviews');
-        Route::get('/review-users', SyntheticUsers::class)->name('review-users');
+        Route::get('/review-users', fn () => redirect()->route('admin.reviews'))->name('review-users');
         Route::get('/employees', Employees::class)->name('employees');
     });
